@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# autopilot — drive any goal to committed, reviewed code autonomously.
+#
+#   autopilot doctor [--yes]           preflight: is this project ready? what status?
+#   autopilot run "<goal|file>" [opts] one session (needs the claude CLI)
+#   autopilot supervise "<goal>" [opts] relaunch across quota resets until DONE/BLOCKED
+#   autopilot resume                   resume the run in this repo
+#   autopilot status [--json]          aggregate task states from .agent/run/state
+#   autopilot scope <task.md> [ref]    changed files outside the task's Allowed Files
+#   autopilot help
+#
+# opts forwarded to the skill: --dry-run, --max-tasks N, --yes
+set -uo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+LIB="$HERE/lib"
+# shellcheck source=lib/common.sh
+. "$LIB/common.sh"
+
+usage() { sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; }
+
+cmd="${1:-help}"; shift 2>/dev/null || true
+
+case "$cmd" in
+  doctor)
+    bash "$LIB/doctor.sh" "${1:-}" ;;
+
+  run|supervise)
+    goal="${1:?usage: autopilot $cmd \"<goal or file>\" [opts]}"; shift || true
+    # Preflight gate: block only on hard blockers; pass --yes through.
+    yes=""; for a in "$@"; do [ "$a" = "--yes" ] && yes="--yes"; done
+    bash "$LIB/doctor.sh" "$yes" || ap_die "doctor blocked the run — fix the ✗ items above, or pass --yes" 3
+    if [ "$cmd" = supervise ]; then
+      bash "$LIB/supervisor.sh" "$goal" "$@"
+    else
+      command -v claude >/dev/null 2>&1 || ap_die "claude CLI not on PATH"
+      exec claude -p "/autopilot $goal $*" --permission-mode "${PERMISSION_MODE:-acceptEdits}"
+    fi ;;
+
+  resume)
+    [ -d "$(ap_queue_dir)" ] || ap_die "no run to resume here (.agent/queue missing)"
+    command -v claude >/dev/null 2>&1 || ap_die "claude CLI not on PATH"
+    exec claude -p "/autopilot resume the run in .agent/ — read PROGRESS.md and run/state/*, restart at the first task not done" \
+      --permission-mode "${PERMISSION_MODE:-acceptEdits}" ;;
+
+  status)
+    sd="$(ap_task_state)"; st="$(cat "$(ap_status_file)" 2>/dev/null || echo NONE)"
+    done=0; blocked=0; human=0; other=0
+    if [ -d "$sd" ]; then
+      for f in "$sd"/*; do
+        [ -e "$f" ] || continue
+        case "$(cat "$f")" in
+          done) done=$((done+1)) ;; blocked) blocked=$((blocked+1)) ;;
+          needs-human) human=$((human+1)) ;; *) other=$((other+1)) ;;
+        esac
+      done
+    fi
+    if [ "${1:-}" = "--json" ]; then
+      printf '{"status":"%s","done":%d,"blocked":%d,"needs_human":%d,"other":%d}\n' \
+        "$st" "$done" "$blocked" "$human" "$other"
+    else
+      echo "run status: $st"
+      echo "$done done · $blocked blocked · $human needs-human · $other in-flight"
+      [ -f "$(ap_state_dir)/HUMAN-INBOX.md" ] && echo "human inbox: $(ap_state_dir)/HUMAN-INBOX.md"
+      true
+    fi ;;
+
+  scope)
+    # autopilot scope <task-file.md> [git-ref]
+    # Prints changed files outside the task's "## Allowed Files". Exit 2 if any.
+    task="${1:?usage: autopilot scope <task-file.md> [git-ref]}"; ref="${2:-HEAD}"
+    [ -f "$task" ] || ap_die "no such task file: $task"
+    tmp="$(mktemp)"; trap 'rm -f "$tmp"' EXIT
+    # Extract bullet paths under "## Allowed Files" until the next "## " heading.
+    awk '/^##[[:space:]]+Allowed Files/{f=1;next} /^##[[:space:]]/{f=0} f' "$task" \
+      | sed -n 's/^[[:space:]]*[-*][[:space:]]*`\{0,1\}\([^`]*\)`\{0,1\}[[:space:]]*$/\1/p' \
+      > "$tmp"
+    [ -s "$tmp" ] || ap_die "task has no '## Allowed Files' paths — every task must declare its scope" 2
+    v="$(ap_scope_violations "$tmp" "$ref")"
+    if [ -n "$v" ]; then
+      echo "SCOPE VIOLATION — changed outside ## Allowed Files:"; echo "$v" | sed 's/^/  /'
+      exit 2
+    fi
+    echo "scope ok — all changes within ## Allowed Files" ;;
+
+  help|-h|--help) usage ;;
+  *) ap_warn "unknown command: $cmd"; usage; exit 1 ;;
+esac

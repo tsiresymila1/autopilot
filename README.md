@@ -1,0 +1,96 @@
+# autopilot
+
+Drive any goal — a sentence, a brief, a task list, a requirements document — to
+committed, reviewed code **autonomously**, on any project in any state.
+
+Every task carries a **gate**: a shell command that returns success only when the task
+is genuinely done. No gate, no "done". The gate proves completion; a reviewer subagent
+judges quality on top. The engine never stops to ask — it decides, logs the decision,
+parks human-only matters in an inbox, and keeps going.
+
+## Install
+
+```bash
+./install.sh
+```
+
+Symlinks the skill into `~/.claude/skills/autopilot` and the CLI into `~/.local/bin`.
+Idempotent — re-run after pulling updates. Set `CLAUDE_HOME` to install elsewhere.
+
+## Use
+
+```bash
+autopilot doctor [--yes]            # is this project ready? what status?
+autopilot run "<goal or file>"      # one session (needs the claude CLI)
+autopilot supervise "<goal>"        # relaunch across quota resets until DONE/BLOCKED
+autopilot resume                    # resume the run in this repo
+autopilot status [--json]           # aggregate task states
+autopilot scope <task.md> [ref]     # changed files outside the task's ## Allowed Files
+```
+
+Forwarded to the skill: `--dry-run`, `--max-tasks N`, `--yes`.
+
+Inside a Claude session, `/autopilot <goal>` runs the skill directly.
+
+## Project status — adapts, does not assume
+
+`doctor` classifies the project and the run adapts:
+
+| Status | When | Behaviour |
+|---|---|---|
+| `greenfield` | empty dir | pure construction, scaffolds with the project's own tooling; `git init` is automatic |
+| `brownfield` | git repo, clean tree | confronts the codebase before queuing so nothing is rebuilt |
+| `needs-setup` | not a repo, or dirty tree | blocks until a human acts — pass `--yes` to override, never auto-stashes your changes |
+
+## How it works
+
+- `bin/autopilot` — CLI dispatcher (the invocation contract).
+- `lib/doctor.sh` — preflight + project-status detection.
+- `lib/supervisor.sh` — relaunch loop across quota resets, with a pid lock.
+- `lib/common.sh` — shared paths, project-type and default-gate matrix.
+- `skill/SKILL.md` — the autonomous engine Claude runs.
+- `agents/*.md` — the subagents the engine spawns: `builder`, `reviewer`, `writer`,
+  `explorer`, `planner`, `debugger`. Bundled and linked by `install.sh`, so a fresh
+  machine has them. Existing files in `~/.claude/agents` are kept, never clobbered.
+
+spec-kit is optional — if present the skill uses `/speckit-specify|plan|tasks`,
+otherwise it decomposes the goal plainly. `doctor` tells you which.
+
+State lives in `.agent/` (git-ignored, local to the worktree):
+
+```
+.agent/run/status          RUNNING | DONE | BLOCKED
+.agent/run/lock            supervisor pid — two runs never collide
+.agent/run/state/<id>      done | blocked | needs-human   (one per task)
+.agent/queue/NNN-slug.md   task specs (each with a gate + a NEVER list)
+.agent/PROGRESS.md         the journal — decisions logged as they are made
+.agent/HUMAN-INBOX.md      everything awaiting a human
+```
+
+`autopilot status --json` aggregates `run/state/*` on demand — there is no second copy
+of the state to keep in sync.
+
+## Scope control — the whitelist is enforced, not suggested
+
+Each task declares `## Allowed Files`: the only paths it may touch. After the builder
+runs, `autopilot scope <task.md>` diffs the working tree and **fails if any change
+strays outside the whitelist** — the machine-checkable form of "stay in your lane",
+borrowed from the dual-model orchestrator pattern. A file genuinely needed but not
+listed triggers the **scope-expansion protocol**: concrete paths are added to the
+whitelist on the record (logged in `PROGRESS.md`), broad/ambiguous ones become a new
+task or `needs-human`. Never a silent drift.
+
+## Never done autonomously
+
+`git push` · pull request · deploy · `rm -rf` · `git reset --hard` · force push ·
+creating accounts · spending money · editing `.env` · rotating or committing a secret.
+Hitting one turns the task `needs-human` and the action is left for a person.
+
+## Test
+
+```bash
+bash test/run.sh
+```
+
+Pure bash, no framework. Runs `doctor`/`status` against throwaway fixture repos
+(empty, node-clean, node-dirty) and asserts on their output.
