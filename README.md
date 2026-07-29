@@ -13,7 +13,7 @@ parks human-only matters in an inbox, and keeps going.
 Over the network (clones the repo, then links):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tsiresymila/autopilot/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/tsiresymila1/autopilot/main/install.sh | bash
 ```
 
 From a checkout:

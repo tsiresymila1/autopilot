@@ -9,7 +9,7 @@
 # Env overrides: AUTOPILOT_REPO (git url) · AUTOPILOT_DIR (clone target) · CLAUDE_HOME
 set -euo pipefail
 
-REPO_URL="${AUTOPILOT_REPO:-https://github.com/tsiresymila/autopilot.git}"
+REPO_URL="${AUTOPILOT_REPO:-https://github.com/tsiresymila1/autopilot.git}"
 INSTALL_DIR="${AUTOPILOT_DIR:-$HOME/.local/share/autopilot}"
 CLAUDE="${CLAUDE_HOME:-$HOME/.claude}"
 
