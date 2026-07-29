@@ -49,6 +49,7 @@ autopilot status [--json]           # aggregate task states
 autopilot scope <task.md> [ref]     # changed files outside the task's ## Allowed Files
 autopilot review <task.md> [ref]    # independent JSON verdict from another model
 autopilot docs [status|init]        # the durable-doc quad (committed source of truth)
+autopilot notify "<title>" "<msg>"  # fire a milestone notification (test the hook)
 autopilot update                    # pull the latest version and re-link (alias: upgrade)
 ```
 
@@ -107,15 +108,19 @@ Inside a Claude session, `/autopilot <goal>` runs the skill directly.
 
 - `bin/autopilot` — CLI dispatcher (the invocation contract).
 - `lib/doctor.sh` — preflight + project-status detection.
-- `lib/supervisor.sh` — relaunch loop across quota resets, with a pid lock.
-- `lib/common.sh` — shared paths, project-type and default-gate matrix.
+- `lib/supervisor.sh` — relaunch loop across quota resets, with a pid lock + notifications.
+- `lib/docs.sh` — the durable-doc quad (status gate + scaffold).
+- `lib/review.sh` — the pluggable independent reviewer.
+- `lib/common.sh` — shared paths, project-type/default-gate matrix, notifications.
 - `skill/SKILL.md` — the autonomous engine Claude runs.
 - `agents/*.md` — the subagents the engine spawns: `builder`, `reviewer`, `writer`,
   `explorer`, `planner`, `debugger`. Bundled and linked by `install.sh`, so a fresh
   machine has them. Existing files in `~/.claude/agents` are kept, never clobbered.
 
-spec-kit is optional — if present the skill uses `/speckit-specify|plan|tasks`,
-otherwise it decomposes the goal plainly. `doctor` tells you which.
+spec-kit is optional and set up by `install.sh` (the `specify` CLI). When available the
+skill uses `/speckit-specify|plan|tasks` (scaffolding a project with
+`specify init --here --integration claude --force` on first use); otherwise it decomposes
+the goal plainly. `doctor` tells you which.
 
 State lives in `.agent/` (git-ignored, local to the worktree):
 
@@ -123,7 +128,7 @@ State lives in `.agent/` (git-ignored, local to the worktree):
 .agent/run/status          RUNNING | DONE | BLOCKED
 .agent/run/lock            supervisor pid — two runs never collide
 .agent/run/state/<id>      done | blocked | needs-human   (one per task)
-.agent/queue/NNN-slug.md   task specs (each with a gate + a NEVER list)
+.agent/queue/NNN-slug.md   task specs (each: gate + ## Allowed Files + ## NEVER)
 .agent/PROGRESS.md         the journal — decisions logged as they are made
 .agent/HUMAN-INBOX.md      everything awaiting a human
 ```
@@ -180,5 +185,8 @@ Hitting one turns the task `needs-human` and the action is left for a person.
 bash test/run.sh
 ```
 
-Pure bash, no framework. Runs `doctor`/`status` against throwaway fixture repos
-(empty, node-clean, node-dirty) and asserts on their output.
+Pure bash, no framework. Spins up throwaway fixture repos and asserts on real output:
+project-status detection, the language/default-gate matrix (node/python/rust/go/php/
+static/empty), scope enforcement, the durable-doc quad, the independent reviewer, ntfy
+notifications, `install.sh` into a fake HOME, and `autopilot update` end-to-end. Every
+script also passes `bash -n`.
