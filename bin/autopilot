@@ -53,24 +53,38 @@ case "$cmd" in
       --permission-mode "${PERMISSION_MODE:-acceptEdits}" ;;
 
   status)
-    sd="$(ap_task_state)"; st="$(cat "$(ap_status_file)" 2>/dev/null || echo NONE)"
-    done=0; blocked=0; human=0; other=0
-    if [ -d "$sd" ]; then
-      for f in "$sd"/*; do
+    # Per-task view: walk the queue, resolve each task's state, tally, print a table.
+    sd="$(ap_task_state)"; qd="$(ap_queue_dir)"
+    st="$(cat "$(ap_status_file)" 2>/dev/null || echo NONE)"
+    json="${1:-}"
+    done=0; blocked=0; human=0; todo=0; rows=""; jtasks=""
+    icon() { case "$1" in done) echo "✓";; blocked) echo "✗";; needs-human) echo "⚑";; *) echo "·";; esac; }
+    if [ -d "$qd" ]; then
+      for f in "$qd"/*.md; do
         [ -e "$f" ] || continue
-        case "$(cat "$f")" in
-          done) done=$((done+1)) ;; blocked) blocked=$((blocked+1)) ;;
-          needs-human) human=$((human+1)) ;; *) other=$((other+1)) ;;
-        esac
+        base="$(basename "$f" .md)"
+        title="$(sed -n '1s/^#[[:space:]]*//p' "$f")"; [ -n "$title" ] || title="$base"
+        id="$(sed -n 's/^-[[:space:]]*\*\*id\*\*:[[:space:]]*//p' "$f" | head -1)"; [ -n "$id" ] || id="$base"
+        gate="$(sed -n 's/^-[[:space:]]*\*\*gate\*\*:[[:space:]]*//p' "$f" | head -1 | tr -d '`')"
+        tstate="todo"
+        for key in "$id" "$base" "${base%%-*}"; do
+          [ -n "$key" ] && [ -f "$sd/$key" ] && { tstate="$(cat "$sd/$key")"; break; }
+        done
+        case "$tstate" in done) done=$((done+1));; blocked) blocked=$((blocked+1));;
+          needs-human) human=$((human+1));; *) todo=$((todo+1)); tstate="todo";; esac
+        rows="$rows$(printf '  %s  %-11s %s' "$(icon "$tstate")" "$tstate" "$title")
+"
+        jtasks="$jtasks,{\"id\":\"$id\",\"state\":\"$tstate\",\"title\":\"${title//\"/\'}\",\"gate\":\"${gate//\"/\'}\"}"
       done
     fi
-    if [ "${1:-}" = "--json" ]; then
-      printf '{"status":"%s","done":%d,"blocked":%d,"needs_human":%d,"other":%d}\n' \
-        "$st" "$done" "$blocked" "$human" "$other"
+    if [ "$json" = "--json" ]; then
+      printf '{"status":"%s","done":%d,"blocked":%d,"needs_human":%d,"todo":%d,"tasks":[%s]}\n' \
+        "$st" "$done" "$blocked" "$human" "$todo" "${jtasks#,}"
     else
       echo "run status: $st"
-      echo "$done done · $blocked blocked · $human needs-human · $other in-flight"
-      [ -f "$(ap_state_dir)/HUMAN-INBOX.md" ] && echo "human inbox: $(ap_state_dir)/HUMAN-INBOX.md"
+      echo "$done done · $blocked blocked · $human needs-human · $todo todo"
+      [ -n "$rows" ] && { echo; printf '%s' "$rows"; }
+      [ -f "$(ap_state_dir)/HUMAN-INBOX.md" ] && { echo; echo "human inbox: $(ap_state_dir)/HUMAN-INBOX.md"; }
       true
     fi ;;
 

@@ -41,17 +41,26 @@ mkdir -p "$TMP/dirty"; cd "$TMP/dirty"
   assert_contains "$out" "working tree dirty" "flags dirty tree"
   [ "$code" -eq 3 ] && ok "exits 3 (blocked) on dirty tree" || no "expected exit 3, got $code"
 
-# --- status aggregation reads run/state/* ------------------------------------
-echo "fixture: status aggregation"
+# --- status: per-task view from the queue + resolved states ------------------
+echo "fixture: status per-task"
 mkdir -p "$TMP/st"; cd "$TMP/st"
   git init -q
-  mkdir -p .agent/run/state; echo RUNNING > .agent/run/status
+  mkdir -p .agent/run/state .agent/queue; echo RUNNING > .agent/run/status
+  printf '# 001 — Scaffold app\n- **id**: a\n- **gate**: `true`\n' > .agent/queue/001-scaffold.md
+  printf '# 002 — Add models\n- **id**: b\n- **gate**: `pytest`\n'   > .agent/queue/002-models.md
+  printf '# 003 — Wire routes\n- **id**: c\n'                        > .agent/queue/003-routes.md
+  printf '# 004 — Health check\n- **id**: d\n'                       > .agent/queue/004-health.md
   echo done > .agent/run/state/a; echo done > .agent/run/state/b
-  echo needs-human > .agent/run/state/c
-  out="$("$AP" status --json 2>&1)"
-  assert_contains "$out" '"done":2'        "counts 2 done"
-  assert_contains "$out" '"needs_human":1' "counts 1 needs-human"
-  assert_contains "$out" '"status":"RUNNING"' "reads run status"
+  echo needs-human > .agent/run/state/c        # d has no state → todo
+  out="$("$AP" status 2>&1)"
+  assert_contains "$out" "2 done · 0 blocked · 1 needs-human · 1 todo" "counts across queue + states"
+  assert_contains "$out" "Scaffold app" "lists a task title"
+  assert_contains "$out" "needs-human 003 — Wire routes" "shows the needs-human task with its state"
+  assert_contains "$out" "todo        004 — Health check" "shows the untouched task as todo"
+  jout="$("$AP" status --json 2>&1)"
+  assert_contains "$jout" '"todo":1'                "json carries the todo count"
+  assert_contains "$jout" '"id":"a","state":"done"' "json includes per-task entries"
+  assert_contains "$jout" '"gate":"pytest"'         "json carries each task's gate"
 
 # --- scope enforcement: diff must stay within ## Allowed Files ----------------
 echo "fixture: scope enforcement"

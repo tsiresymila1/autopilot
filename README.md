@@ -81,7 +81,13 @@ What happens, hands-off:
 Then:
 
 ```bash
-autopilot status              # 8 done · 0 blocked · 1 needs-human
+autopilot status              # per-task table:
+#   run status: RUNNING
+#   6 done · 0 blocked · 1 needs-human · 1 todo
+#
+#     ✓  done         001 — Scaffold FastAPI app
+#     ⚑  needs-human  006 — Deploy config (needs a secret)
+#     ·  todo         007 — Rate limiting
 git log --oneline             # one commit per task
 cat .agent/HUMAN-INBOX.md      # what's left for you
 ```
@@ -240,8 +246,8 @@ Everything a run produces lives under `.agent/` (git-ignored):
 Practical commands:
 
 ```bash
-autopilot status               # counts: N done · N blocked · N needs-human
-autopilot status --json        # same, machine-readable
+autopilot status               # counts + a per-task table (icon, state, title)
+autopilot status --json        # same, machine-readable, with a per-task array
 tail -f .agent/run-logs/supervisor.log        # watch a supervise run live
 tail -n 200 .agent/run-logs/run-*.log | less  # what an agent actually did last session
 cat .agent/PROGRESS.md          # the decision journal
