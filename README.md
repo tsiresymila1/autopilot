@@ -56,6 +56,53 @@ autopilot update                    # pull the latest version and re-link (alias
 Update to a newly-pushed version with `autopilot update` — it pulls the install dir and
 re-links (new agents, lib, and refreshed extras). Or re-run the curl one-liner.
 
+## Worked example — a project from zero
+
+```bash
+mkdir my-app && cd my-app                      # empty dir
+export AUTOPILOT_NTFY_TOPIC=my-app-run         # get pinged when it finishes
+autopilot doctor                               # → status: greenfield (git init is automatic)
+autopilot supervise "a REST API in FastAPI for a todo list: CRUD tasks, \
+  SQLite storage, pytest coverage, a /health endpoint"
+```
+
+What happens, hands-off:
+
+1. **doctor** sees an empty dir → `greenfield`, runs `git init`.
+2. **Phase 1** — writes the durable quad (`docs/REQUIREMENTS.md`, `ARCHITECTURE.md`,
+   `TASK_BACKLOG.md`, `TEST_STRATEGY.md`), then a queue of gated tasks under
+   `.agent/queue/` (scaffold app → models → CRUD routes → health → tests). Each task gets
+   a gate like `python -m pytest -q` and an `## Allowed Files` whitelist.
+3. **Phase 2** — for each task: `builder` writes code + tests → the gate runs →
+   `autopilot scope` checks the diff stayed in its lane → `reviewer` checks quality →
+   `writer` commits. Anything only a human can decide → `.agent/HUMAN-INBOX.md`.
+4. **Phase 4** — an ntfy push: `autopilot: DONE`.
+
+Then:
+
+```bash
+autopilot status              # 8 done · 0 blocked · 1 needs-human
+git log --oneline             # one commit per task
+cat .agent/HUMAN-INBOX.md      # what's left for you
+```
+
+## Contexts — same engine, different entry
+
+The goal shape decides everything; the commands are the same. Run `autopilot doctor`
+first in every case.
+
+| Context | How you start it |
+|---|---|
+| **Project from zero** | empty dir → `autopilot supervise "describe the whole app"`. doctor = `greenfield`, git init automatic, pure construction. |
+| **From a cahier des charges** (spec doc) | `autopilot supervise cahier.md` — it reads the file **fully**, one task per feature, recon tasks for unknowns. |
+| **From a one-line goal** | `autopilot run "add CSV export to the reports page"` — expanded into the concrete deliverables it implies. |
+| **Existing project** | `cd repo && autopilot run "<goal>"`. doctor = `brownfield`: it confronts the codebase (done / partial / to do) before queuing, so nothing gets rebuilt. |
+| **A new feature** | `autopilot run "implement F-101: password reset"` — scoped to that feature's files via `## Allowed Files`. |
+| **A bug / debug** | `autopilot run "fix: uploads over 5MB return 500"` — the gate is a failing test that must go green; the `debugger` subagent is spawned when the cause is unclear. |
+| **Just plan, don't build** | add `--dry-run` — stops after Phase 1 and shows the queue. |
+| **Limit the run** | add `--max-tasks 3` — stops after N tasks (status `DONE`). |
+| **Dirty tree, on purpose** | add `--yes` — runs against uncommitted changes (it won't commit your unrelated work). |
+
 ## Durable docs — the committed source of truth
 
 Every run maintains four committed docs under `docs/`, each owning a distinct class of
@@ -172,6 +219,63 @@ Backend priority, best-effort (never fails the run): **ntfy** (`AUTOPILOT_NTFY_T
 custom `AUTOPILOT_NOTIFY` command (title/body in `$AUTOPILOT_NOTIFY_TITLE` /
 `$AUTOPILOT_NOTIFY_BODY`) → macOS `osascript` → Linux `notify-send` → none. `doctor`
 reports which is active.
+
+## Logs, progress, and agent output
+
+Everything a run produces lives under `.agent/` (git-ignored):
+
+```
+.agent/PROGRESS.md              the journal — every decision, gate result, and action,
+                                logged at the moment it happens. Read this first.
+.agent/HUMAN-INBOX.md           what is waiting on you (decisions, secrets, merges).
+.agent/PLAN-SUMMARY.md          the Phase-1 decomposition, risks, and execution order.
+.agent/queue/NNN-slug.md        the task specs (gate + Allowed Files + steps + NEVER).
+.agent/run/state/<id>           per-task state: done | blocked | needs-human.
+.agent/run/status               RUNNING | DONE | BLOCKED.
+.agent/run-logs/supervisor.log  the supervisor's own log: each session, quota waits.
+.agent/run-logs/run-<ts>.log    full session output per relaunch — this is where the
+                                subagents' work (builder, reviewer, …) is captured.
+```
+
+Practical commands:
+
+```bash
+autopilot status               # counts: N done · N blocked · N needs-human
+autopilot status --json        # same, machine-readable
+tail -f .agent/run-logs/supervisor.log        # watch a supervise run live
+tail -n 200 .agent/run-logs/run-*.log | less  # what an agent actually did last session
+cat .agent/PROGRESS.md          # the decision journal
+sed -n '/^# NNN/,/Done when/p' .agent/queue/042-*.md   # inspect one task's spec + gate
+```
+
+`autopilot run` (foreground) streams to your terminal. `autopilot supervise` (background,
+survives quota resets) is the one that files the `run-logs/`.
+
+## When a task fails, blocks, or needs you
+
+A task ends in exactly one of three states — visible in `.agent/run/state/<id>` and
+counted by `autopilot status`:
+
+| State | Meaning | What to do |
+|---|---|---|
+| `done` | gate passed, reviewed, committed | nothing |
+| `blocked` | gate stayed red after 2 build attempts, or the reviewer flagged it `Risky` (reverted) | read `PROGRESS.md` for the reason; fix the blocker, then `autopilot resume` |
+| `needs-human` | code may be finished; a human action/decision remains (a merge, an architecture call, a secret to rotate) | do the item in `HUMAN-INBOX.md`, then `autopilot resume` |
+
+**Resume is safe and never restarts from scratch.** State is on disk, so relaunching
+reads `PROGRESS.md` (decisions stand), `run/state/*` (which tasks are done) and the queue,
+then continues at the first task not `done` whose dependencies are met:
+
+```bash
+autopilot resume                    # picks up where it stopped, in this repo
+autopilot supervise "<same goal>"   # same thing across quota resets (it detects the resume)
+```
+
+The interrupted session (crash, quota, Ctrl-C) leaves `.agent/run/status` = `RUNNING`;
+the supervisor treats that as "resume me". A pid `lock` prevents two runs colliding.
+
+If the whole run stopped at `BLOCKED` (base gates red, or three tasks blocked in a row),
+that is a hard stop: fix the underlying issue, then relaunch.
 
 ## Never done autonomously
 
