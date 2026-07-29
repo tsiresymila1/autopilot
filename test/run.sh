@@ -122,6 +122,23 @@ mkdir -p "$TMP/stat"; cd "$TMP/stat"; echo "hi" > index.html; git init -q
   assert_contains "$out" "no default gate"     "static: no default gate, skill designs one"
 cd "$ROOT"
 
+# --- durable-doc quad: status gate + idempotent scaffold ---------------------
+echo "fixture: durable-doc quad"
+mkdir -p "$TMP/quad"; cd "$TMP/quad"; git init -q
+  "$AP" docs status >/dev/null 2>&1; [ "$?" -eq 3 ] && ok "status exits 3 when quad missing" || no "expected exit 3"
+  out="$("$AP" docs init 2>&1)"
+  assert_contains "$out" "scaffolded REQUIREMENTS.md" "init scaffolds REQUIREMENTS"
+  assert_contains "$out" "scaffolded TEST_STRATEGY.md" "init scaffolds TEST_STRATEGY"
+  out="$("$AP" docs status 2>&1)"; code=$?
+  assert_contains "$out" "quad complete" "status reports complete after init"
+  [ "$code" -eq 0 ] && ok "status exits 0 when quad present" || no "expected exit 0, got $code"
+  grep -q "Owns:" docs/ARCHITECTURE.md && ok "scaffold states each doc's ownership" || no "missing Owns header"
+  # idempotent: re-init keeps filled docs
+  echo "real content" >> docs/REQUIREMENTS.md
+  "$AP" docs init >/dev/null 2>&1
+  grep -q "real content" docs/REQUIREMENTS.md && ok "re-init never clobbers a filled doc" || no "clobbered content"
+cd "$ROOT"
+
 echo
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ]

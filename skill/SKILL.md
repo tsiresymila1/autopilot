@@ -62,6 +62,10 @@ aggregates `run/state/*` on demand — do not keep a second copy of the state in
 - src/auth/login.ts
 - <behaviour the task must not change>
 
+## Docs Impact
+- **class**: no-doc | backlog-only | full-durable
+- **owns**: <if full-durable, name each durable doc in scope and the exact fact it owns>
+
 ## Étapes
 1. <concrete step>
 2. ...
@@ -130,6 +134,34 @@ Normalise the goal to a backlog, whatever its shape:
 For **brownfield**, confront the codebase (done / partial / to do — cite evidence for
 "done") before queuing so you never re-build what exists.
 
+### The durable-doc quad (committed source of truth)
+
+Before queuing, establish four committed docs under `docs/` — the facts the whole run is
+consistent with. **Autopilot generates them itself** from the goal (+ the codebase for
+brownfield); they are never a human precondition. Scaffold headers with
+`autopilot docs init`, then fill them:
+
+| Doc | Owns |
+|---|---|
+| `docs/REQUIREMENTS.md` | product behaviour, user-visible requirements, API contracts, security/data rules, roles, permissions, external contracts |
+| `docs/ARCHITECTURE.md` | stable module layout, runtime ownership, provider wiring, service boundaries, data-flow shape, top-level responsibility |
+| `docs/TASK_BACKLOG.md` | sequencing, exact tasks, per-task mechanics, remaining gaps, future intent — **the queue derives from this** |
+| `docs/TEST_STRATEGY.md` | coverage classes, risk scenarios, expected checks, verification gaps |
+
+Rules that keep them trustworthy:
+
+- **One owner per fact.** A fact lives in exactly one doc. Put task ids, slice mechanics
+  and per-task test filenames in `TASK_BACKLOG.md`, not in the broad docs.
+- **Broad docs stay broad.** Replace stale claims with concise current truth — never
+  append implementation narration, proof chronology, or defensive status prose.
+- `autopilot docs status` must be green (all four non-empty) before Phase 2. If a task
+  would make a durable fact stale but cannot safely touch the owning doc, split it.
+
+Each task then declares its `## Docs Impact` class: `no-doc` (internal/refactor/style),
+`backlog-only` (only sequencing/status → `TASK_BACKLOG.md`), or `full-durable` (behaviour,
+API, architecture, security, data model, ownership, or coverage changed → update every
+owning doc it names).
+
 **Use spec-kit for the specification layer** when available (the doctor reports it). For
 anything non-trivial:
 
@@ -197,6 +229,9 @@ For each task in dependency order (skip those whose `depends` is not `done`):
    - Run `autopilot review .agent/queue/NNN-slug.md`.
      - Prints JSON `{status, required_checks_passed, findings[]}` → use that verdict.
      - Exits 10 (no external reviewer configured) → spawn the `reviewer` subagent instead.
+   - The reviewer also checks **doc consistency** against the task's `## Docs Impact`:
+     durable docs required by a `full-durable` task must be updated and internally
+     consistent; a `no-doc` task must not touch durable docs.
    - Map the verdict:
      - `APPROVED` → proceed to Record
      - `CHANGES_REQUESTED` → back to `builder` with the findings, re-run gate, re-review

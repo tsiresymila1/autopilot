@@ -80,6 +80,15 @@ else
 fi
 
 echo
+echo "Durable docs (quad)"
+qmiss=0
+for d in REQUIREMENTS ARCHITECTURE TASK_BACKLOG TEST_STRATEGY; do
+  [ -s "$root/docs/$d.md" ] || qmiss=$((qmiss+1))
+done
+if [ "$qmiss" -eq 0 ]; then pass "quad present (REQUIREMENTS ARCHITECTURE TASK_BACKLOG TEST_STRATEGY)"
+else note "$qmiss/4 quad docs missing — autopilot generates them in Phase 1 ('autopilot docs init' scaffolds headers)"; fi
+
+echo
 if [ "$ptype" = empty ]; then
   status=greenfield
 elif ! ap_in_git && [ "$AUTO_YES" != "--yes" ]; then

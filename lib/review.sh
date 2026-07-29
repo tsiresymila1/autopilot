@@ -27,7 +27,10 @@ root="$(ap_root)"
 diff="$(git -C "$root" diff "$REF" 2>/dev/null)"
 [ -z "$diff" ] && ap_die "no changes to review against $REF" 2
 
-prompt="$(cat <<EOF
+# Build the prompt in a temp file. Plain heredocs only — no $(cat <<EOF) wrapping,
+# which macOS bash mis-parses; and file/diff content is written, never shell-parsed.
+prompt_file="$(mktemp)"; trap 'rm -f "$prompt_file"' EXIT
+cat > "$prompt_file" <<'EOF'
 You are an INDEPENDENT reviewer. You did NOT write this code. Judge it against the task.
 Be adversarial: assume it is wrong until the diff proves otherwise.
 
@@ -43,25 +46,23 @@ Rules:
 - RISKY if the change is unsafe to keep (hidden regression, data loss, security hole) — the runner reverts it.
 - SCOPE_EXPANSION_REQUIRED only if the task genuinely cannot be done inside ## Allowed Files;
   list each needed repo-relative path in a finding.
+- Enforce ## Docs Impact: a full-durable task must update every durable doc it names and
+  keep them internally consistent; a no-doc task must not touch durable docs; broad docs
+  must not carry another doc's facts or implementation narration.
 - The gate already proved completion. You catch what a green gate cannot: security, design, regressions, scope.
-
-===== TASK =====
-$(cat "$TASK")
-
-===== DIFF (git diff $REF) =====
-$diff
 EOF
-)"
+{ printf '\n===== TASK =====\n'; cat "$TASK"
+  printf '\n===== DIFF (git diff %s) =====\n%s\n' "$REF" "$diff"; } >> "$prompt_file"
 
 run_backend() {
   case "$backend" in
     codex)
       command -v codex >/dev/null 2>&1 || { ap_warn "codex not on PATH — falling back to subagent"; return 10; }
-      printf '%s' "$prompt" | codex exec -C "$root" -s read-only \
-        ${AUTOPILOT_REVIEWER_MODEL:+-m "$AUTOPILOT_REVIEWER_MODEL"} - 2>/dev/null ;;
+      codex exec -C "$root" -s read-only \
+        ${AUTOPILOT_REVIEWER_MODEL:+-m "$AUTOPILOT_REVIEWER_MODEL"} - < "$prompt_file" 2>/dev/null ;;
     *)
       [ -n "${AUTOPILOT_REVIEWER_CMD:-}" ] || { ap_die "unknown reviewer '$backend' and no AUTOPILOT_REVIEWER_CMD"; }
-      printf '%s' "$prompt" | eval "$AUTOPILOT_REVIEWER_CMD" ;;
+      eval "$AUTOPILOT_REVIEWER_CMD" < "$prompt_file" ;;
   esac
 }
 

@@ -8,6 +8,7 @@
 #   autopilot status [--json]          aggregate task states from .agent/run/state
 #   autopilot scope <task.md> [ref]    changed files outside the task's Allowed Files
 #   autopilot review <task.md> [ref]   independent JSON verdict (AUTOPILOT_REVIEWER)
+#   autopilot docs [status|init]       the durable-doc quad (committed source of truth)
 #   autopilot help
 #
 # opts forwarded to the skill: --dry-run, --max-tasks N, --yes
@@ -17,7 +18,7 @@ LIB="$HERE/lib"
 # shellcheck source=lib/common.sh
 . "$LIB/common.sh"
 
-usage() { sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; }
 
 cmd="${1:-help}"; shift 2>/dev/null || true
 
@@ -87,6 +88,10 @@ case "$cmd" in
     # autopilot review <task-file.md> [git-ref]  — independent JSON verdict.
     # Exit 10 = no external reviewer configured; caller uses the subagent instead.
     bash "$LIB/review.sh" "$@" ;;
+
+  docs)
+    # autopilot docs [status|init]  — the durable-doc quad (committed source of truth).
+    bash "$LIB/docs.sh" "$@" ;;
 
   help|-h|--help) usage ;;
   *) ap_warn "unknown command: $cmd"; usage; exit 1 ;;

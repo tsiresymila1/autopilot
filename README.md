@@ -27,7 +27,26 @@ autopilot resume                    # resume the run in this repo
 autopilot status [--json]           # aggregate task states
 autopilot scope <task.md> [ref]     # changed files outside the task's ## Allowed Files
 autopilot review <task.md> [ref]    # independent JSON verdict from another model
+autopilot docs [status|init]        # the durable-doc quad (committed source of truth)
 ```
+
+## Durable docs — the committed source of truth
+
+Every run maintains four committed docs under `docs/`, each owning a distinct class of
+fact. **Autopilot generates and fills them itself in Phase 1** — they are never a human
+precondition, so the hands-off "any goal" entry survives.
+
+| Doc | Owns |
+|---|---|
+| `REQUIREMENTS.md` | product behaviour, API contracts, security/data rules, roles, permissions |
+| `ARCHITECTURE.md` | module layout, ownership, provider wiring, service boundaries, data flow |
+| `TASK_BACKLOG.md` | sequencing, exact tasks, per-task mechanics, gaps — the queue derives from this |
+| `TEST_STRATEGY.md` | coverage classes, risk scenarios, expected checks, verification gaps |
+
+One fact, one owner: broad docs stay broad, task mechanics live in the backlog. Each task
+declares a `## Docs Impact` class (`no-doc` / `backlog-only` / `full-durable`) and the
+reviewer enforces it. `autopilot docs status` must be green before execution;
+`autopilot docs init` scaffolds the ownership headers.
 
 ## Independent review — the builder can't approve itself
 
