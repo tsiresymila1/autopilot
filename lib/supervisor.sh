@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Supervisor: relaunch the autopilot session until the work is finished.
 #
-# Nothing inside a Claude session can restart it after a quota block. This lives
+# Nothing inside an engine session can restart it after a quota block. This lives
 # outside: it relaunches, waits for the reset, resumes. State is on disk
 # (.autopilot/status, journal.md, state/*), so each relaunch picks up where
-# the last one stopped.
+# the last one stopped. The engine is claude by default, codex via AUTOPILOT_ENGINE.
 #
 #   supervisor.sh "<goal or file>" [extra autopilot args]
 #   MAX_RELAUNCH=40 supervisor.sh "goal" --max-tasks 5
@@ -21,7 +21,7 @@ MAX_RELAUNCH="${MAX_RELAUNCH:-24}"
 RETRY_WAIT="${RETRY_WAIT:-900}"                 # fallback wait if reset time unknown
 PERMISSION_MODE="${PERMISSION_MODE:-bypassPermissions}"
 
-command -v claude >/dev/null 2>&1 || ap_die "claude CLI not on PATH"
+why="$(ap_engine_available)" || ap_die "$why"
 cd "$(ap_root)" || exit 1
 
 # --- single-run lock (stale locks from dead PIDs are reclaimed) ---------------
@@ -50,18 +50,21 @@ wait_for_reset() {
   log "quota hit — resuming in $((secs/60)) min"; sleep "$secs"
 }
 
-PROMPT="/autopilot $GOAL $EXTRA
+# The engine prompt is built once (claude: a skill call · codex: the inlined skill).
+PROMPTFILE="$(mktemp)"; trap 'rm -f "$PROMPTFILE" "$LOCK"' EXIT
+ap_engine_prompt "$GOAL $EXTRA
 
 If .autopilot/ already holds tasks and a journal, this is a RESUME: read
 .autopilot/journal.md, .autopilot/state/* and .autopilot/tasks/, then restart at the
-first task not marked done. Do not start over. Do not re-litigate decisions already made."
+first task not marked done. Do not start over. Do not re-litigate decisions already made." \
+  "$PROMPTFILE"
 
-log "start — goal: $GOAL ${EXTRA:+· options: $EXTRA}"
+log "start — engine: $(ap_engine) · goal: $GOAL ${EXTRA:+· options: $EXTRA}"
 
 for i in $(seq 1 "$MAX_RELAUNCH"); do
   OUT="$LOGDIR/session-$(date +%Y%m%d-%H%M%S).log"
   log "session $i/$MAX_RELAUNCH → $OUT"
-  claude -p "$PROMPT" --permission-mode "$PERMISSION_MODE" >"$OUT" 2>&1
+  ap_engine_exec "$PROMPTFILE" >"$OUT" 2>&1
   code=$?
   status=$(cat "$STATUS" 2>/dev/null || echo "RUNNING")
   log "session ended (code $code) · status=$status"

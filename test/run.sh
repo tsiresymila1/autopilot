@@ -101,7 +101,8 @@ mkdir -p "$TMP/gate/src"; cd "$TMP/gate"
   "$AP" gate-lint weak.md >/dev/null 2>&1; [ "$?" -eq 2 ] && ok "gate-lint rejects a tautology gate" || no "weak gate not caught"
   printf '# 1 — x\n- **gate**: `test -f src/app.js`\n## Allowed Files\n- src/app.js\n' > weakf.md
   "$AP" gate-lint weakf.md >/dev/null 2>&1; [ "$?" -eq 2 ] && ok "gate-lint rejects 'test -f' without a content check" || no "test -f not caught"
-  printf '# 1 — x\n- **gate**: `test -s src/app.js`\n## Allowed Files\n- src/app.js\n' > strong.md
+  # inline `# comment` on an Allowed Files line must be stripped, not treated as a path
+  printf '# 1 — x\n- **gate**: `test -s src/app.js`\n## Allowed Files\n- src/app.js   # the entrypoint\n' > strong.md
   out="$("$AP" gate-lint strong.md 2>&1)"; [ "$?" -eq 0 ] && ok "gate-lint accepts a real check" || no "strong gate rejected"
   # gate runner: pass and fail, provenance to journal
   "$AP" gate strong.md >/dev/null 2>&1 && ok "gate runs and passes a green gate" || no "green gate failed"
@@ -164,19 +165,26 @@ echo "fixture: durable-doc quad"
 mkdir -p "$TMP/quad"; cd "$TMP/quad"; git init -q
   "$AP" docs status >/dev/null 2>&1; [ "$?" -eq 3 ] && ok "status exits 3 when quad missing" || no "expected exit 3"
   out="$("$AP" docs init 2>&1)"
-  assert_contains "$out" "scaffolded REQUIREMENTS.md" "init scaffolds REQUIREMENTS"
-  assert_contains "$out" "scaffolded TEST_STRATEGY.md" "init scaffolds TEST_STRATEGY"
+  assert_contains "$out" "scaffolded requirements.md"   "init scaffolds requirements"
+  assert_contains "$out" "scaffolded test-strategy.md"  "init scaffolds test-strategy"
   out="$("$AP" docs status 2>&1)"; code=$?
   assert_contains "$out" "quad complete" "status reports complete after init"
+  assert_contains "$out" "docs/autopilot/requirements.md" "status reports the namespaced path"
   [ "$code" -eq 0 ] && ok "status exits 0 when quad present" || no "expected exit 0, got $code"
-  grep -q "Owns:" docs/ARCHITECTURE.md && ok "scaffold states each doc's ownership" || no "missing Owns header"
-  [ -s docs/AI_MEMORY.md ] && ok "init scaffolds optional AI_MEMORY.md" || no "AI_MEMORY not scaffolded"
-  rm -f docs/AI_MEMORY.md; "$AP" docs status >/dev/null 2>&1
-  [ "$?" -eq 0 ] && ok "status stays green without AI_MEMORY (not gated)" || no "AI_MEMORY wrongly gated"
+  grep -q "Owns:" docs/autopilot/architecture.md && ok "scaffold states each doc's ownership" || no "missing Owns header"
+  [ -s docs/autopilot/memory.md ] && ok "init scaffolds optional memory.md" || no "memory.md not scaffolded"
+  rm -f docs/autopilot/memory.md; "$AP" docs status >/dev/null 2>&1
+  [ "$?" -eq 0 ] && ok "status stays green without memory.md (not gated)" || no "memory.md wrongly gated"
   # idempotent: re-init keeps filled docs
-  echo "real content" >> docs/REQUIREMENTS.md
+  echo "real content" >> docs/autopilot/requirements.md
   "$AP" docs init >/dev/null 2>&1
-  grep -q "real content" docs/REQUIREMENTS.md && ok "re-init never clobbers a filled doc" || no "clobbered content"
+  grep -q "real content" docs/autopilot/requirements.md && ok "re-init never clobbers a filled doc" || no "clobbered content"
+  # a project's own docs/ is never touched by the namespaced quad
+  echo "MINE" > docs/architecture.md; "$AP" docs init >/dev/null 2>&1
+  grep -q MINE docs/architecture.md && ok "never collides with the project's own docs/" || no "clobbered project docs"
+  # overridable location
+  ( cd "$TMP/quad" && AUTOPILOT_DOCS_DIR=documentation "$AP" docs init >/dev/null 2>&1 )
+  [ -s documentation/requirements.md ] && ok "AUTOPILOT_DOCS_DIR relocates the quad" || no "override ignored"
 cd "$ROOT"
 
 # --- install.sh into a throwaway HOME: links skill, cli, agents; no clobber ----
@@ -213,6 +221,41 @@ assert_contains "$uout" "updated" "reports the version change"
 # second run = no-op
 uout="$(HOME="$UHOME" AUTOPILOT_SKIP_EXTRAS=1 "$UHOME/.local/bin/autopilot" update 2>&1)"
 assert_contains "$uout" "already up to date" "second update is a clean no-op"
+
+# --- logs: resolve and tail the right file ------------------------------------
+echo "fixture: logs"
+mkdir -p "$TMP/lg/.autopilot/logs"; cd "$TMP/lg"; git init -q
+  printf 'SUPERVISOR LINE\n' > .autopilot/logs/supervisor.log
+  printf 'SESSION OLD\n'     > .autopilot/logs/session-20260101-000000.log
+  printf 'SESSION NEW\n'     > .autopilot/logs/session-20260101-000001.log
+  printf 'GATE OUTPUT\n'     > .autopilot/logs/gate-042.log
+  printf '# journal\nJOURNAL LINE\n' > .autopilot/journal.md
+  assert_contains "$("$AP" logs 2>/dev/null)"           "SESSION NEW"     "logs defaults to the newest session log"
+  assert_contains "$("$AP" logs supervisor 2>/dev/null)" "SUPERVISOR LINE" "logs supervisor resolves supervisor.log"
+  assert_contains "$("$AP" logs gate-042 2>/dev/null)"   "GATE OUTPUT"     "logs gate-042 resolves that gate's log"
+  assert_contains "$("$AP" logs journal 2>/dev/null)"    "JOURNAL LINE"    "logs journal reads the decision journal"
+  assert_contains "$("$AP" logs ls 2>/dev/null)"         "session-2026"    "logs ls lists the log files"
+  "$AP" logs nosuchthing >/dev/null 2>&1; [ "$?" -ne 0 ] && ok "logs errors on an unknown target" || no "expected failure"
+cd "$ROOT"
+
+# --- engine: claude by default, codex inlines the skill, bogus is rejected -----
+echo "fixture: engine"
+mkdir -p "$TMP/eng"; cd "$TMP/eng"; git init -q
+  # prompt building, checked directly against the library
+  pf="$TMP/eng/p.txt"
+  ( . "$ROOT/lib/common.sh"; ap_engine_prompt "do the thing" "$pf" )
+  assert_contains "$(cat "$pf")" "/autopilot do the thing" "claude engine prompt invokes the skill"
+  ( . "$ROOT/lib/common.sh"; AUTOPILOT_ENGINE=codex ap_engine_prompt "do the thing" "$pf" )
+  assert_contains "$(cat "$pf")" "gate"          "codex engine prompt inlines the skill text"
+  assert_contains "$(cat "$pf")" "do the thing"  "codex engine prompt carries the goal"
+  assert_contains "$(cat "$pf")" "no Claude subagents" "codex prompt tells it to do the roles itself"
+  # an unknown engine is refused before anything runs
+  out="$(AUTOPILOT_ENGINE=bogus "$AP" run "x" 2>&1)"; code=$?
+  assert_contains "$out" "unknown AUTOPILOT_ENGINE" "an unknown engine is rejected"
+  [ "$code" -ne 0 ] && ok "run exits non-zero on an unknown engine" || no "expected non-zero"
+  # doctor names the active engine
+  assert_contains "$("$AP" doctor 2>&1)" "engine:" "doctor reports the active engine"
+cd "$ROOT"
 
 # --- notifications -----------------------------------------------------------
 echo "fixture: notifications"

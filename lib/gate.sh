@@ -16,10 +16,13 @@ ap_id_of() {
   [ -n "$id" ] && echo "$id" || basename "$1" .md
 }
 
-# Echo the paths under "## Allowed Files", one per line (comments/backticks stripped).
+# Echo the paths under "## Allowed Files", one per line — backticks, inline `# comments`
+# and surrounding whitespace stripped, so callers can use each line as a real path.
 ap_allowed_paths() {
   awk '/^##[[:space:]]+Allowed Files/{f=1;next} /^##[[:space:]]/{f=0} f' "$1" \
-    | sed -n 's/^[[:space:]]*[-*][[:space:]]*`\{0,1\}\([^`]*\)`\{0,1\}[[:space:]]*$/\1/p'
+    | sed -n 's/^[[:space:]]*[-*][[:space:]]*`\{0,1\}\([^`]*\)`\{0,1\}[[:space:]]*$/\1/p' \
+    | sed -e 's/[[:space:]]*#.*$//' -e 's/[[:space:]]*$//' -e 's/^[[:space:]]*//' \
+    | grep -v '^$'
 }
 
 # Return 0 if the gate is too weak to prove completion (cheatable / trivially true).

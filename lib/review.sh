@@ -58,7 +58,8 @@ run_backend() {
   case "$backend" in
     codex)
       command -v codex >/dev/null 2>&1 || { ap_warn "codex not on PATH — falling back to subagent"; return 10; }
-      codex exec -C "$root" -s read-only \
+      # -a never must precede `exec`, or a non-interactive review can hang on approval.
+      codex -a never exec -C "$root" -s read-only \
         ${AUTOPILOT_REVIEWER_MODEL:+-m "$AUTOPILOT_REVIEWER_MODEL"} - < "$prompt_file" 2>/dev/null ;;
     *)
       [ -n "${AUTOPILOT_REVIEWER_CMD:-}" ] || { ap_die "unknown reviewer '$backend' and no AUTOPILOT_REVIEWER_CMD"; }

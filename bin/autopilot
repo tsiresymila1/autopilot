@@ -13,6 +13,7 @@
 #   autopilot revert <task.md>         restore only the task's Allowed Files (scoped)
 #   autopilot review <task.md> [ref]   independent JSON verdict (AUTOPILOT_REVIEWER)
 #   autopilot docs [status|init]       the durable-doc quad (committed source of truth)
+#   autopilot logs [what] [-f] [-n N]  tail a log: session (default) | supervisor | gate | journal | ls
 #   autopilot notify "<title>" "<msg>" fire a milestone notification (test the hook)
 #   autopilot update                   pull the latest version and re-link (alias: upgrade)
 #   autopilot help
@@ -30,7 +31,7 @@ LIB="$HERE/lib"
 # shellcheck source=lib/common.sh
 . "$LIB/common.sh" || { echo "autopilot: cannot load $LIB/common.sh — broken install?" >&2; exit 1; }
 
-usage() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; }
 
 cmd="${1:-help}"; shift 2>/dev/null || true
 
@@ -46,15 +47,18 @@ case "$cmd" in
     if [ "$cmd" = supervise ]; then
       bash "$LIB/supervisor.sh" "$goal" "$@"
     else
-      command -v claude >/dev/null 2>&1 || ap_die "claude CLI not on PATH"
-      exec claude -p "/autopilot $goal $*" --permission-mode "${PERMISSION_MODE:-bypassPermissions}"
+      why="$(ap_engine_available)" || ap_die "$why"
+      pf="$(mktemp)"; trap 'rm -f "$pf"' EXIT
+      ap_engine_prompt "$goal $*" "$pf"
+      ap_engine_exec "$pf"
     fi ;;
 
   resume)
     [ -d "$(ap_tasks_dir)" ] || ap_die "no run to resume here (.autopilot/tasks missing)"
-    command -v claude >/dev/null 2>&1 || ap_die "claude CLI not on PATH"
-    exec claude -p "/autopilot resume the run in .autopilot/ — read journal.md and state/*, restart at the first task not done" \
-      --permission-mode "${PERMISSION_MODE:-bypassPermissions}" ;;
+    why="$(ap_engine_available)" || ap_die "$why"
+    pf="$(mktemp)"; trap 'rm -f "$pf"' EXIT
+    ap_engine_prompt "resume the run in .autopilot/ — read journal.md and state/*, restart at the first task not done. Do not start over." "$pf"
+    ap_engine_exec "$pf" ;;
 
   status)
     # Per-task view: walk the queue, resolve each task's state, tally, print a table.
@@ -163,6 +167,42 @@ case "$cmd" in
   docs)
     # autopilot docs [status|init]  — the durable-doc quad (committed source of truth).
     bash "$LIB/docs.sh" "$@" ;;
+
+  logs)
+    # autopilot logs [what] [-f|-n N]
+    #   (default)   the newest engine session log — what Claude/Codex actually did
+    #   supervisor  the supervisor's own log (sessions, quota waits)
+    #   gate[-<id>] a gate's captured output
+    #   journal     the decision journal
+    #   ls          list every log with size and time
+    ld="$(ap_logs_dir)"; what="${1:-session}"; case "$what" in -*) what=session;; *) shift 2>/dev/null || true;; esac
+    follow=""; lines=200
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        -f|--follow) follow=1 ;;
+        -n) shift; lines="${1:-200}" ;;
+        -n*) lines="${1#-n}" ;;
+      esac; shift
+    done
+    [ -d "$ld" ] || ap_die "no logs yet ($ld) — run 'autopilot supervise' or a gate first"
+    case "$what" in
+      ls|list)
+        # Newest last, with size — the quickest way to see what a run produced.
+        ls -lhtr "$ld" 2>/dev/null | sed '1d;s/^/  /'
+        [ -f "$(ap_journal)" ] && printf '  %s\n' "$(ls -lh "$(ap_journal)" | sed 's/^/journal: /')"
+        true ;;
+      journal)
+        f="$(ap_journal)"; [ -f "$f" ] || ap_die "no journal yet ($f)"
+        [ -n "$follow" ] && exec tail -f "$f" || tail -n "$lines" "$f" ;;
+      *)
+        # Resolve to a concrete file: an exact name, else the newest match for the prefix.
+        if [ -f "$ld/$what" ]; then f="$ld/$what"
+        elif [ -f "$ld/$what.log" ]; then f="$ld/$what.log"
+        else f="$(ls -t "$ld"/${what}*.log 2>/dev/null | head -1)"; fi
+        [ -n "${f:-}" ] && [ -f "$f" ] || ap_die "no log matching '$what' in $ld (try: autopilot logs ls)"
+        echo "── $f" >&2
+        [ -n "$follow" ] && exec tail -f "$f" || tail -n "$lines" "$f" ;;
+    esac ;;
 
   notify)
     # autopilot notify "<title>" "<body>"  — fire a milestone notification (test the hook).

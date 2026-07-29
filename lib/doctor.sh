@@ -68,8 +68,10 @@ else
 fi
 if claude plugin list 2>/dev/null | grep -qi ponytail; then pass "ponytail plugin installed"
 else note "ponytail not installed — install.sh sets it up (best-effort)"; fi
-command -v claude >/dev/null 2>&1 && pass "claude CLI on PATH" \
-                                  || note "claude CLI not on PATH — 'autopilot supervise' will not work"
+if why="$(ap_engine_available)"; then pass "engine: $(ap_engine) (ready)"
+else note "engine $(ap_engine) unusable — $why"; fi
+[ "$(ap_engine)" = claude ] && command -v codex >/dev/null 2>&1 \
+  && say '·' "codex also available — AUTOPILOT_ENGINE=codex runs the skill on it"
 if [ -n "${AUTOPILOT_NTFY_TOPIC:-}" ]; then pass "notifications via ntfy (${AUTOPILOT_NTFY_SERVER:-https://ntfy.sh}/$AUTOPILOT_NTFY_TOPIC)"
 elif [ -n "${AUTOPILOT_NOTIFY:-}" ]; then pass "notifications via AUTOPILOT_NOTIFY hook"
 elif command -v osascript >/dev/null 2>&1; then pass "notifications via osascript (macOS, local only)"
@@ -87,12 +89,13 @@ else
 fi
 
 echo
-echo "Durable docs (quad)"
+ddir="$(ap_docs_dir)"; drel="${ddir#$root/}"
+echo "Durable docs ($drel)"
 qmiss=0
-for d in REQUIREMENTS ARCHITECTURE TASK_BACKLOG TEST_STRATEGY; do
-  [ -s "$root/docs/$d.md" ] || qmiss=$((qmiss+1))
+for d in requirements architecture backlog test-strategy; do
+  [ -s "$ddir/$d.md" ] || qmiss=$((qmiss+1))
 done
-if [ "$qmiss" -eq 0 ]; then pass "quad present (REQUIREMENTS ARCHITECTURE TASK_BACKLOG TEST_STRATEGY)"
+if [ "$qmiss" -eq 0 ]; then pass "quad present (requirements architecture backlog test-strategy)"
 else note "$qmiss/4 quad docs missing — autopilot generates them in Phase 1 ('autopilot docs init' scaffolds headers)"; fi
 
 echo

@@ -120,7 +120,7 @@ Create `journal.md` and `inbox.md` with headers. Append, never rewrite.
 | `DONE` | No executable task left (some may sit in inbox). Do not relaunch. |
 | `BLOCKED` | Hard technical stop, human needed. Do not relaunch. |
 
-## Phase 1 — Triage → the queue
+## Phase 1 — Triage → the task list
 
 Normalise the goal to a backlog, whatever its shape:
 
@@ -136,33 +136,37 @@ For **brownfield**, confront the codebase (done / partial / to do — cite evide
 
 ### The durable-doc quad (committed source of truth)
 
-Before queuing, establish four committed docs under `docs/` — the facts the whole run is
-consistent with. **Autopilot generates them itself** from the goal (+ the codebase for
-brownfield); they are never a human precondition. Scaffold headers with
+Before queuing, establish four **committed** docs under `docs/autopilot/` — the facts the
+whole run is consistent with. **Autopilot generates them itself** from the goal (+ the
+codebase for brownfield); they are never a human precondition. They are namespaced so
+they never collide with the project's own `docs/`. Scaffold headers with
 `autopilot docs init`, then fill them:
 
 | Doc | Owns |
 |---|---|
-| `docs/REQUIREMENTS.md` | product behaviour, user-visible requirements, API contracts, security/data rules, roles, permissions, external contracts |
-| `docs/ARCHITECTURE.md` | stable module layout, runtime ownership, provider wiring, service boundaries, data-flow shape, top-level responsibility |
-| `docs/TASK_BACKLOG.md` | sequencing, exact tasks, per-task mechanics, remaining gaps, future intent — **the queue derives from this** |
-| `docs/TEST_STRATEGY.md` | coverage classes, risk scenarios, expected checks, verification gaps |
+| `docs/autopilot/requirements.md` | product behaviour, user-visible requirements, API contracts, security/data rules, roles, permissions, external contracts |
+| `docs/autopilot/architecture.md` | stable module layout, runtime ownership, provider wiring, service boundaries, data-flow shape, top-level responsibility |
+| `docs/autopilot/backlog.md` | sequencing, exact tasks, per-task mechanics, remaining gaps, future intent — **the task list derives from this** |
+| `docs/autopilot/test-strategy.md` | coverage classes, risk scenarios, expected checks, verification gaps |
 
 Rules that keep them trustworthy:
 
 - **One owner per fact.** A fact lives in exactly one doc. Put task ids, slice mechanics
-  and per-task test filenames in `TASK_BACKLOG.md`, not in the broad docs.
+  and per-task test filenames in `backlog.md`, not in the broad docs.
 - **Broad docs stay broad.** Replace stale claims with concise current truth — never
   append implementation narration, proof chronology, or defensive status prose.
+- **Never clobber the project's own docs.** If `docs/architecture.md` already exists and
+  is the real owner of a fact, read it and *reference* it; the quad records what autopilot
+  maintains. `AUTOPILOT_DOCS_DIR` relocates the quad if the team wants them merged.
 - `autopilot docs status` must be green (all four non-empty) before Phase 2. If a task
   would make a durable fact stale but cannot safely touch the owning doc, split it.
 
-Also read `docs/AI_MEMORY.md` if present (committed, optional): one-line lessons from past
-runs — gate patterns that worked, recurring blockers, conventions this project taught you.
-Let them shape the queue. You append to it in Phase 4.
+Also read `docs/autopilot/memory.md` if present (committed, optional): one-line lessons
+from past runs — gate patterns that worked, recurring blockers, conventions this project
+taught you. Let them shape the task list. You append to it in Phase 4.
 
 Each task then declares its `## Docs Impact` class: `no-doc` (internal/refactor/style),
-`backlog-only` (only sequencing/status → `TASK_BACKLOG.md`), or `full-durable` (behaviour,
+`backlog-only` (only sequencing/status → `backlog.md`), or `full-durable` (behaviour,
 API, architecture, security, data model, ownership, or coverage changed → update every
 owning doc it names).
 
@@ -204,10 +208,10 @@ still be an *executable* proof — never "looks done":
 A task without a runnable gate is not ready; add one or split it.
 
 For unknown areas, emit **recon tasks** first: spawn `explorer`/`planner`, and write
-their findings to `docs/plans/*.md` (committed — they are durable design docs).
+their findings to `docs/autopilot/plans/*.md` (committed — they are durable design docs).
 
-Write `plan.md`: the decomposition, risks, execution order, and the blocking
-decisions up front. If `--dry-run`, stop here and report the queue.
+Write `.autopilot/plan.md`: the decomposition, risks, execution order, and the blocking
+decisions up front. If `--dry-run`, stop here and report the task list.
 
 ## Phase 2 — The execution loop
 
@@ -319,14 +323,14 @@ creating accounts · spending money · editing `.env` · rotating or committing 
 
 ## Resume after interruption
 
-State is on disk. Relaunching must not restart: read `journal.md` (decisions stand),
-`.autopilot/state/*` (which tasks are done), the queue (the rest). Resume at the first
-task not `done` whose dependencies are met. Say it is a resumption.
+State is on disk. Relaunching must not restart: read `.autopilot/journal.md` (decisions
+stand), `.autopilot/state/*` (which tasks are done), `.autopilot/tasks/` (the rest). Resume
+at the first task not `done` whose dependencies are met. Say it is a resumption.
 
 ## Phase 4 — Final report
 
 Lead with what the user must act on, not what shipped:
-1. **inbox** — the decisions and actions now waiting on them. First.
+1. **`inbox.md`** — the decisions and actions now waiting on them. First.
 2. **Décisions prises** — where you chose on their behalf (from `journal.md`).
 3. **Blocked** — with what unblocks each.
 4. **Shipped** — tasks `done`, commits, gate results.
@@ -334,8 +338,8 @@ Lead with what the user must act on, not what shipped:
 
 Counts, like the model to emulate: e.g. `77 done · 0 blocked · 1 needs-human`.
 
-Then **append durable lessons to `docs/AI_MEMORY.md`** (committed): a gate pattern that
-proved reliable, a blocker that recurred, a convention the codebase enforced. One line
+Then **append durable lessons to `docs/autopilot/memory.md`** (committed): a gate pattern
+that proved reliable, a blocker that recurred, a convention the codebase enforced. One line
 each, "what happened → what to do next time". This is the only state that survives across
 projects — `.autopilot/` is local and thrown away.
 
@@ -350,12 +354,14 @@ the user can walk away. Set `AUTOPILOT_NTFY_TOPIC` (ntfy) to be pinged on their 
 
 ## Rules
 
-- **A task ships only when its gate passes.** No gate ⇒ the task is not ready.
+- **A task ships only when `autopilot verify` passes** — scope, task gate, and repo gate.
+  No gate ⇒ the task is not ready. A green narrow gate on a broken repo is not done.
 - **Never disable a test, lower a threshold, or `@ts-ignore` to force a gate green.** That
   is cheating the one mechanism that makes this trustworthy. A gate that cannot pass
   honestly → `blocked`.
-- **Never skip the reviewer** — the gate proves completion, not quality.
-- **Never invent scope.** Not in the goal ⇒ not a task. A gap is a inbox line.
-- **Log the decision when you make it**, in `journal.md`, not at the end.
+- **Never weaken a gate to make it pass** — `gate-lint` rejects tautologies for a reason.
+- **Never skip the reviewer** — verify proves completion, not quality.
+- **Never invent scope.** Not in the goal ⇒ not a task. A gap is an `inbox.md` line.
+- **Log the decision when you make it**, in `.autopilot/journal.md`, not at the end.
 - Requires a clean git working tree (the doctor enforces this) — commit or stash before
   launching, or pass `--yes` to run against a dirty tree at your own risk.

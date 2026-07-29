@@ -53,6 +53,7 @@ autopilot scope <task.md> [ref]     # changed files outside the task's ## Allowe
 autopilot revert <task.md>          # restore only the task's Allowed Files (scoped)
 autopilot review <task.md> [ref]    # independent JSON verdict from another model
 autopilot docs [status|init]        # the durable-doc quad (committed source of truth)
+autopilot logs [what] [-f] [-n N]   # session (default) | supervisor | gate-<id> | journal | ls
 autopilot notify "<title>" "<msg>"  # fire a milestone notification (test the hook)
 autopilot update                    # pull the latest version and re-link (alias: upgrade)
 ```
@@ -115,21 +116,25 @@ first in every case.
 
 ## Durable docs — the committed source of truth
 
-Every run maintains four committed docs under `docs/`, each owning a distinct class of
-fact. **Autopilot generates and fills them itself in Phase 1** — they are never a human
-precondition, so the hands-off "any goal" entry survives.
+Every run maintains four **committed** docs under `docs/autopilot/`, each owning a distinct
+class of fact. **Autopilot generates and fills them itself in Phase 1** — they are never a
+human precondition, so the hands-off "any goal" entry survives. They are namespaced (and
+lowercase) so they never collide with the project's own `docs/`; set `AUTOPILOT_DOCS_DIR`
+to relocate them.
 
 | Doc | Owns |
 |---|---|
-| `REQUIREMENTS.md` | product behaviour, API contracts, security/data rules, roles, permissions |
-| `ARCHITECTURE.md` | module layout, ownership, provider wiring, service boundaries, data flow |
-| `TASK_BACKLOG.md` | sequencing, exact tasks, per-task mechanics, gaps — the queue derives from this |
-| `TEST_STRATEGY.md` | coverage classes, risk scenarios, expected checks, verification gaps |
+| `requirements.md` | product behaviour, API contracts, security/data rules, roles, permissions |
+| `architecture.md` | module layout, ownership, provider wiring, service boundaries, data flow |
+| `backlog.md` | sequencing, exact tasks, per-task mechanics, gaps — the task list derives from this |
+| `test-strategy.md` | coverage classes, risk scenarios, expected checks, verification gaps |
+| `memory.md` | *(optional, not gated)* one-line lessons carried between runs |
 
-One fact, one owner: broad docs stay broad, task mechanics live in the backlog. Each task
+One fact, one owner: broad docs stay broad, task mechanics live in `backlog.md`. Each task
 declares a `## Docs Impact` class (`no-doc` / `backlog-only` / `full-durable`) and the
 reviewer enforces it. `autopilot docs status` must be green before execution;
-`autopilot docs init` scaffolds the ownership headers.
+`autopilot docs init` scaffolds the ownership headers (never overwriting a filled doc, and
+never touching the project's own `docs/`).
 
 ## Independent review — the builder can't approve itself
 
@@ -171,11 +176,16 @@ if you'd rather approve each shell command yourself (it will stop and wait).
 ## How it works
 
 - `bin/autopilot` — CLI dispatcher (the invocation contract).
+- `lib/paths.sh` — the workspace layout, logging, git, and scope checking.
+- `lib/project.sh` — project-type detection + the default-gate matrix.
+- `lib/gate.sh` — gate extraction, weak-gate detection, reproducible gate runs.
 - `lib/doctor.sh` — preflight + project-status detection.
 - `lib/supervisor.sh` — relaunch loop across quota resets, with a pid lock + notifications.
 - `lib/docs.sh` — the durable-doc quad (status gate + scaffold).
 - `lib/review.sh` — the pluggable independent reviewer.
-- `lib/common.sh` — shared paths, project-type/default-gate matrix, notifications.
+- `lib/engine.sh` — the engine abstraction (Claude skill call vs inlined-skill Codex run).
+- `lib/notify.sh` — the notification backends (ntfy first).
+- `lib/common.sh` — thin aggregator that sources the modules above.
 - `skill/SKILL.md` — the autonomous engine Claude runs.
 - `agents/*.md` — the subagents the engine spawns: `builder`, `reviewer`, `writer`,
   `explorer`, `planner`, `debugger`. Bundled and linked by `install.sh`, so a fresh
@@ -196,11 +206,12 @@ State lives in `.autopilot/` (git-ignored, local to the worktree):
 .autopilot/plan.md           the Phase-1 decomposition
 .autopilot/journal.md        decisions + gate provenance, logged as they happen
 .autopilot/inbox.md          everything awaiting a human
-.autopilot/logs/             supervisor.log + session-<ts>.log (supervise runs)
+.autopilot/logs/             supervisor.log · session-<ts>.log · gate-<id>.log
 ```
 
 `autopilot status --json` aggregates `state/*` on demand — there is no second copy
-of the state to keep in sync.
+of the state to keep in sync. The **committed** durable docs live separately, under
+`docs/autopilot/`.
 
 ## Scope control — the whitelist is enforced, not suggested
 
@@ -264,16 +275,17 @@ reports which is active.
 Everything a run produces lives under `.autopilot/` (git-ignored):
 
 ```
-.autopilot/journal.md              the journal — every decision, gate result, and action,
-                                logged at the moment it happens. Read this first.
-.autopilot/inbox.md           what is waiting on you (decisions, secrets, merges).
-.autopilot/plan.md          the Phase-1 decomposition, risks, and execution order.
-.autopilot/tasks/NNN-slug.md        the task specs (gate + Allowed Files + steps + NEVER).
-.autopilot/state/<id>           per-task state: done | blocked | needs-human.
-.autopilot/status               RUNNING | DONE | BLOCKED.
-.autopilot/logs/supervisor.log  the supervisor's own log: each session, quota waits.
-.autopilot/logs/run-<ts>.log    full session output per relaunch — this is where the
-                                subagents' work (builder, reviewer, …) is captured.
+.autopilot/journal.md            every decision, gate result, and action, logged at the
+                                 moment it happens. Read this first.
+.autopilot/inbox.md              what is waiting on you (decisions, secrets, merges).
+.autopilot/plan.md               the Phase-1 decomposition, risks, and execution order.
+.autopilot/tasks/NNN-slug.md     the task specs (gate + Allowed Files + steps + NEVER).
+.autopilot/state/<id>            per-task state: done | blocked | needs-human.
+.autopilot/status                RUNNING | DONE | BLOCKED.
+.autopilot/logs/supervisor.log   the supervisor's own log: each session, quota waits.
+.autopilot/logs/session-<ts>.log full session output per relaunch — this is where the
+                                 subagents' work (builder, reviewer, …) is captured.
+.autopilot/logs/gate-<id>.log    the captured output of each gate run.
 ```
 
 Practical commands:
@@ -281,14 +293,42 @@ Practical commands:
 ```bash
 autopilot status               # counts + a per-task table (icon, state, title)
 autopilot status --json        # same, machine-readable, with a per-task array
-tail -f .autopilot/logs/supervisor.log        # watch a supervise run live
-tail -n 200 .autopilot/logs/run-*.log | less  # what an agent actually did last session
-cat .autopilot/journal.md          # the decision journal
+autopilot logs                 # the newest session log — what the engine actually did
+autopilot logs -f              # follow it live
+autopilot logs supervisor -f   # watch relaunches and quota waits
+autopilot logs gate-042        # why that gate failed
+autopilot logs journal         # the decision journal
+autopilot logs ls              # every log, with size and time
 sed -n '/^# NNN/,/Done when/p' .autopilot/tasks/042-*.md   # inspect one task's spec + gate
 ```
 
 `autopilot run` (foreground) streams to your terminal. `autopilot supervise` (background,
-survives quota resets) is the one that files the `logs/`.
+survives quota resets) is the one that files the session logs; gate logs are written by
+both.
+
+## Engines — Claude or Codex
+
+The skill is plain markdown, so it is not tied to one agent:
+
+```bash
+autopilot run "<goal>"                        # Claude (default)
+AUTOPILOT_ENGINE=codex autopilot run "<goal>"  # Codex
+```
+
+| Engine | How the skill reaches it | Notes |
+|---|---|---|
+| `claude` (default) | the installed skill, invoked as `/autopilot <goal>` | spawns the bundled subagents (builder, reviewer, …) |
+| `codex` | `skill/SKILL.md` is inlined on stdin — Codex has no skill system | no subagents: it performs each role itself, in the same order |
+
+Codex knobs: `AUTOPILOT_CODEX_MODEL`, `AUTOPILOT_CODEX_EFFORT` (e.g. `xhigh`),
+`AUTOPILOT_CODEX_SANDBOX` (default `workspace-write`), `AUTOPILOT_CODEX_APPROVAL`
+(default `never`, so an autonomous run never waits on approval). `doctor` reports the
+active engine and whether it is usable.
+
+The checkable steps (`gate-lint`, `gate`, `scope`, `verify`, `revert`, `docs`, `status`)
+are CLI verbs, not model behaviour — so they hold identically on either engine. That
+combines well with the independent reviewer: run the engine on one model and
+`AUTOPILOT_REVIEWER` on the other, and no model reviews its own work.
 
 ## When a task fails, blocks, or needs you
 

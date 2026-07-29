@@ -21,6 +21,10 @@ ap_journal()     { echo "$(ap_state_dir)/journal.md"; }    # decisions, gate res
 ap_inbox()       { echo "$(ap_state_dir)/inbox.md"; }      # awaiting a human
 ap_plan()        { echo "$(ap_state_dir)/plan.md"; }       # the decomposition
 
+# The durable docs are COMMITTED (unlike .autopilot/): namespaced under docs/autopilot/
+# so they never collide with a project's own docs. Override to merge them elsewhere.
+ap_docs_dir()    { echo "$(ap_root)/${AUTOPILOT_DOCS_DIR:-docs/autopilot}"; }
+
 # --- logging -----------------------------------------------------------------
 
 ap_log()  { printf '[%s] %s\n' "$(date '+%H:%M:%S')" "$*"; }
