@@ -21,28 +21,28 @@ when the task is genuinely complete — `npm run build && npm test`, `test -s di
 reviewer judges quality on top; the gate judges completion at the bottom. No gate, no
 "done".
 
-## The `.agent/` workspace (local, not committed)
+## The `.autopilot/` workspace (local, not committed)
 
 ```
-.agent/
-├── run/
-│   ├── status                 RUNNING | DONE | BLOCKED  (read by the supervisor)
-│   ├── lock                   the supervisor's pid, so two runs never collide
-│   └── state/<task-id>        done | blocked | needs-human  (one file per task)
-├── queue/NNN-slug.md          one task spec per file (see below)
-├── PLAN-SUMMARY.md            the triage that produced the queue
-├── PROGRESS.md                detailed journal, appended every session — THE reference
-└── HUMAN-INBOX.md             everything awaiting a human action or decision
+.autopilot/
+├── status                     RUNNING | DONE | BLOCKED  (read by the supervisor)
+├── lock                       the supervisor's pid, so two runs never collide
+├── state/<task-id>            done | blocked | needs-human  (one file per task)
+├── tasks/NNN-slug.md          one task spec per file (see below)
+├── plan.md                    the triage that produced the task list
+├── journal.md                 detailed journal + gate provenance, appended every session
+├── inbox.md                   everything awaiting a human action or decision
+└── logs/                      supervisor.log + session-<ts>.log (supervise runs)
 docs/plans/*.md                plans produced by recon tasks (these ARE committed)
 ```
 
-Add `.agent/` to `.gitignore`. It is local to the worktree. `autopilot status --json`
-aggregates `run/state/*` on demand — do not keep a second copy of the state in sync.
+Add `.autopilot/` to `.gitignore`. It is local to the worktree. `autopilot status --json`
+aggregates `state/*` on demand — do not keep a second copy of the state in sync.
 
 `AUTOPILOT_REVIEWER` selects who reviews: `subagent` (default, same model) or `codex`
 (an independent model — the builder cannot approve its own work). The doctor reports it.
 
-### A task spec — `.agent/queue/NNN-slug.md`
+### A task spec — `.autopilot/tasks/NNN-slug.md`
 
 ```markdown
 # NNN — <title>
@@ -107,17 +107,17 @@ autopilot doctor        # or: bash lib/doctor.sh   — prints status: greenfield
 Then open the workspace:
 
 ```bash
-mkdir -p .agent/run/state .agent/queue docs/plans
-echo RUNNING > .agent/run/status
-grep -q '^\.agent/' .gitignore 2>/dev/null || echo '.agent/' >> .gitignore
+mkdir -p .autopilot/state .autopilot/tasks docs/plans
+echo RUNNING > .autopilot/status
+grep -q '^\.autopilot/' .gitignore 2>/dev/null || echo '.autopilot/' >> .gitignore
 ```
 
-Create `PROGRESS.md` and `HUMAN-INBOX.md` with headers. Append, never rewrite.
+Create `journal.md` and `inbox.md` with headers. Append, never rewrite.
 
-| `.agent/run/status` | Meaning for the supervisor |
+| `.autopilot/status` | Meaning for the supervisor |
 |---|---|
 | `RUNNING` | In progress — or the session died. Relaunch to resume. |
-| `DONE` | No executable task left (some may sit in HUMAN-INBOX). Do not relaunch. |
+| `DONE` | No executable task left (some may sit in inbox). Do not relaunch. |
 | `BLOCKED` | Hard technical stop, human needed. Do not relaunch. |
 
 ## Phase 1 — Triage → the queue
@@ -177,7 +177,7 @@ the `specify` CLI is installed but this project has no spec-kit yet, scaffold it
 ```
 
 No spec-kit and no `specify` CLI → decompose plainly into the same ordered task list. Either way, **turn each
-task into a queue file** `.agent/queue/NNN-slug.md` and **give each one a gate**.
+task into a queue file** `.autopilot/tasks/NNN-slug.md` and **give each one a gate**.
 
 ### Designing the gate (the hard, non-optional part)
 
@@ -206,32 +206,41 @@ A task without a runnable gate is not ready; add one or split it.
 For unknown areas, emit **recon tasks** first: spawn `explorer`/`planner`, and write
 their findings to `docs/plans/*.md` (committed — they are durable design docs).
 
-Write `PLAN-SUMMARY.md`: the decomposition, risks, execution order, and the blocking
+Write `plan.md`: the decomposition, risks, execution order, and the blocking
 decisions up front. If `--dry-run`, stop here and report the queue.
 
 ## Phase 2 — The execution loop
 
 For each task in dependency order (skip those whose `depends` is not `done`):
 
+**Base must be green.** Before the first task, and after every commit, the repo gate
+(`autopilot gate <task> --repo`) must pass. Never build on a red base — you would not know
+which failure is yours.
+
 1. **Read the task spec** — steps, Allowed Files, NEVER, gate.
-2. **Reconnaissance** — if it touches unfamiliar code, spawn `explorer` on those files.
-3. **Build** — spawn `builder` with the steps, the **Allowed Files list** (the only files
+2. **Lint the gate** — `autopilot gate-lint .autopilot/tasks/NNN-slug.md`. If it rejects the
+   gate as weak (a tautology, a bare `test -f`), strengthen the gate *before* building — a
+   gate that cannot fail proves nothing.
+3. **Reconnaissance** — if it touches unfamiliar code, spawn `explorer` on those files.
+4. **Build** — spawn `builder` with the steps, the **Allowed Files list** (the only files
    it may edit), the NEVER list, and the instruction to write tests and make **the gate**
    pass. Pass the gate command verbatim. Tell the builder: if it needs a file outside
    Allowed Files, it must **stop and report `SCOPE_EXPANSION_REQUIRED`** with the exact
    paths — never edit outside the whitelist.
-4. **Enforce scope** — `autopilot scope .agent/queue/NNN-slug.md`.
-   - **ok** → continue
-   - **violation** → a file changed outside Allowed Files. Either the builder must restore
-     it (out-of-scope edit), or, if the file is genuinely needed, apply the
+5. **Verify — the two-tier proof.** `autopilot verify .autopilot/tasks/NNN-slug.md`.
+   It checks, in order: **scope** (diff ⊆ Allowed Files), the **task gate** (narrow, this
+   task's proof), and the **repo gate** (build + full suite + lint — the change must not
+   break anything wider). All three must pass.
+   - **scope ✗** → out-of-scope edit → builder restores it, or apply the
      **scope-expansion protocol** below. Never let an out-of-scope change through.
-5. **Run the gate** — execute the shell command.
-   - **passes** → the task is objectively done
-   - **fails** → back to `builder` with the output; if the cause is unclear spawn `debugger`
-7. **Review** — get an independent verdict on the diff (the gate proved completion; the
-   reviewer catches what a green gate cannot: security, design, hidden regressions, scope).
-   Prefer a **different model than the builder** — real independence beats self-review:
-   - Run `autopilot review .agent/queue/NNN-slug.md`.
+   - **task gate ✗** → back to `builder` with the log (`.autopilot/logs/`); if the cause is
+     unclear spawn `debugger`.
+   - **repo gate ✗** → the change broke the wider build/tests → back to `builder`; this is
+     the regression a narrow gate would have hidden.
+6. **Review** — an independent verdict on the diff (verify proved completion; the reviewer
+   catches what a green gate cannot: security, design, hidden regressions, scope). Prefer a
+   **different model than the builder** — real independence beats self-review:
+   - Run `autopilot review .autopilot/tasks/NNN-slug.md`.
      - Prints JSON `{status, required_checks_passed, findings[]}` → use that verdict.
      - Exits 10 (no external reviewer configured) → spawn the `reviewer` subagent instead.
    - The reviewer also checks **doc consistency** against the task's `## Docs Impact`:
@@ -239,18 +248,19 @@ For each task in dependency order (skip those whose `depends` is not `done`):
      consistent; a `no-doc` task must not touch durable docs.
    - Map the verdict:
      - `APPROVED` → proceed to Record
-     - `CHANGES_REQUESTED` → back to `builder` with the findings, re-run gate, re-review
+     - `CHANGES_REQUESTED` → back to `builder` with the findings, re-verify, re-review
      - `SCOPE_EXPANSION_REQUIRED` → apply the scope-expansion protocol
-     - `RISKY` → mark `blocked`, revert, log, next task
-8. **Record**:
-   - `echo done > .agent/run/state/<id>` (or `blocked` / `needs-human`)
-   - append to `PROGRESS.md`: task id, what was done, gate result, decisions taken
+     - `RISKY` → **`autopilot revert .autopilot/tasks/NNN-slug.md`** (scoped revert —
+       restores only the Allowed Files, never a global reset), mark `blocked`, log, next task
+7. **Record**:
+   - `echo done > .autopilot/state/<id>` (or `blocked` / `needs-human`)
+   - append to `journal.md`: task id, what was done, gate result, decisions taken
    - commit via `writer` (one task or a small batch)
-9. **Guards**:
-   - **Gate still red after 2 build attempts** → `blocked`, log why, move on. Looping on
-     a gate that will not go green burns budget without converging.
+8. **Guards**:
+   - **Verify still red after 2 build attempts** → `autopilot revert`, mark `blocked`, log
+     why, move on. Looping on a gate that will not go green burns budget without converging.
    - **The task needs a human** (a merge decision, an architecture call, a secret to
-     rotate) → `needs-human`, write it to `HUMAN-INBOX.md`, move on. Its code may be
+     rotate) → `needs-human`, write it to `inbox.md`, move on. Its code may be
      finished; what remains is the human part.
 
 ### Scope-expansion protocol
@@ -260,7 +270,7 @@ genuinely needed for the task. Decide, do not guess:
 
 - **Concrete, in-scope-of-the-goal path** (e.g. the real owner of a function the task
   must call) → **expand** `## Allowed Files` with that exact path, log the expansion in
-  `PROGRESS.md`, re-run the builder. Small, reversible, obvious ⇒ auto-accept.
+  `journal.md`, re-run the builder. Small, reversible, obvious ⇒ auto-accept.
 - **Ambiguous or broad** ("the provider layer", "some config", a whole new module) →
   do **not** auto-expand. Split into a new task with its own Allowed Files + gate, or
   mark `needs-human` if it is an architecture decision.
@@ -290,7 +300,7 @@ guess.
 
 ## Phase 3 — Stop conditions
 
-Write the matching `.agent/run/status`:
+Write the matching `.autopilot/status`:
 
 | Condition | status |
 |---|---|
@@ -309,15 +319,15 @@ creating accounts · spending money · editing `.env` · rotating or committing 
 
 ## Resume after interruption
 
-State is on disk. Relaunching must not restart: read `PROGRESS.md` (decisions stand),
-`.agent/run/state/*` (which tasks are done), the queue (the rest). Resume at the first
+State is on disk. Relaunching must not restart: read `journal.md` (decisions stand),
+`.autopilot/state/*` (which tasks are done), the queue (the rest). Resume at the first
 task not `done` whose dependencies are met. Say it is a resumption.
 
 ## Phase 4 — Final report
 
 Lead with what the user must act on, not what shipped:
-1. **HUMAN-INBOX** — the decisions and actions now waiting on them. First.
-2. **Décisions prises** — where you chose on their behalf (from `PROGRESS.md`).
+1. **inbox** — the decisions and actions now waiting on them. First.
+2. **Décisions prises** — where you chose on their behalf (from `journal.md`).
 3. **Blocked** — with what unblocks each.
 4. **Shipped** — tasks `done`, commits, gate results.
 5. **Repo state** — branch, commits, are the base gates green.
@@ -327,14 +337,14 @@ Counts, like the model to emulate: e.g. `77 done · 0 blocked · 1 needs-human`.
 Then **append durable lessons to `docs/AI_MEMORY.md`** (committed): a gate pattern that
 proved reliable, a blocker that recurred, a convention the codebase enforced. One line
 each, "what happened → what to do next time". This is the only state that survives across
-projects — `.agent/` is local and thrown away.
+projects — `.autopilot/` is local and thrown away.
 
 ## Running past the usage limit
 
 ```bash
 autopilot supervise "ton objectif ou un fichier"
 ```
-Relaunches after each quota reset, resumes from `.agent/run/state`, holds a pid lock so
+Relaunches after each quota reset, resumes from `.autopilot/state`, holds a pid lock so
 two runs never collide, and **pushes a notification on DONE / BLOCKED / relaunch-cap** so
 the user can walk away. Set `AUTOPILOT_NTFY_TOPIC` (ntfy) to be pinged on their phone.
 
@@ -345,7 +355,7 @@ the user can walk away. Set `AUTOPILOT_NTFY_TOPIC` (ntfy) to be pinged on their 
   is cheating the one mechanism that makes this trustworthy. A gate that cannot pass
   honestly → `blocked`.
 - **Never skip the reviewer** — the gate proves completion, not quality.
-- **Never invent scope.** Not in the goal ⇒ not a task. A gap is a HUMAN-INBOX line.
-- **Log the decision when you make it**, in `PROGRESS.md`, not at the end.
+- **Never invent scope.** Not in the goal ⇒ not a task. A gap is a inbox line.
+- **Log the decision when you make it**, in `journal.md`, not at the end.
 - Requires a clean git working tree (the doctor enforces this) — commit or stash before
   launching, or pass `--yes` to run against a dirty tree at your own risk.

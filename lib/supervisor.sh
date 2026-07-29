@@ -3,7 +3,7 @@
 #
 # Nothing inside a Claude session can restart it after a quota block. This lives
 # outside: it relaunches, waits for the reset, resumes. State is on disk
-# (.agent/run/status, PROGRESS.md, run/state/*), so each relaunch picks up where
+# (.autopilot/status, journal.md, state/*), so each relaunch picks up where
 # the last one stopped.
 #
 #   supervisor.sh "<goal or file>" [extra autopilot args]
@@ -33,7 +33,7 @@ echo $$ > "$LOCK"
 trap 'rm -f "$LOCK"; ap_log "interrupted"; exit 130' INT TERM
 trap 'rm -f "$LOCK"' EXIT
 
-STATUS="$(ap_status_file)"; LOGDIR="$(ap_state_dir)/run-logs"; mkdir -p "$LOGDIR"
+STATUS="$(ap_status_file)"; LOGDIR="$(ap_logs_dir)"; mkdir -p "$LOGDIR"
 log() { ap_log "$1" | tee -a "$LOGDIR/supervisor.log"; }
 
 wait_for_reset() {
@@ -52,14 +52,14 @@ wait_for_reset() {
 
 PROMPT="/autopilot $GOAL $EXTRA
 
-If .agent/ already holds a queue and a journal, this is a RESUME: read
-.agent/PROGRESS.md, .agent/run/state/* and .agent/queue/, then restart at the first
-task not marked done. Do not start over. Do not re-litigate decisions already made."
+If .autopilot/ already holds tasks and a journal, this is a RESUME: read
+.autopilot/journal.md, .autopilot/state/* and .autopilot/tasks/, then restart at the
+first task not marked done. Do not start over. Do not re-litigate decisions already made."
 
 log "start — goal: $GOAL ${EXTRA:+· options: $EXTRA}"
 
 for i in $(seq 1 "$MAX_RELAUNCH"); do
-  OUT="$LOGDIR/run-$(date +%Y%m%d-%H%M%S).log"
+  OUT="$LOGDIR/session-$(date +%Y%m%d-%H%M%S).log"
   log "session $i/$MAX_RELAUNCH → $OUT"
   claude -p "$PROMPT" --permission-mode "$PERMISSION_MODE" >"$OUT" 2>&1
   code=$?
@@ -68,7 +68,7 @@ for i in $(seq 1 "$MAX_RELAUNCH"); do
 
   case "$status" in
     DONE)    log "✅ done — nothing left"; ap_notify "autopilot: DONE" "$GOAL — nothing left to do"; tail -40 "$OUT"; exit 0 ;;
-    BLOCKED) log "⛔ blocked — human needed (see .agent/HUMAN-INBOX.md)"; ap_notify "autopilot: BLOCKED" "$GOAL — human needed (.agent/HUMAN-INBOX.md)"; tail -40 "$OUT"; exit 2 ;;
+    BLOCKED) log "⛔ blocked — human needed (see .autopilot/inbox.md)"; ap_notify "autopilot: BLOCKED" "$GOAL — human needed (.autopilot/inbox.md)"; tail -40 "$OUT"; exit 2 ;;
   esac
 
   if grep -qiE 'usage limit|rate limit|quota|too many requests|limite.*atteinte|429' "$OUT"; then

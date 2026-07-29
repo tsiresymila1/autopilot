@@ -45,13 +45,13 @@ mkdir -p "$TMP/dirty"; cd "$TMP/dirty"
 echo "fixture: status per-task"
 mkdir -p "$TMP/st"; cd "$TMP/st"
   git init -q
-  mkdir -p .agent/run/state .agent/queue; echo RUNNING > .agent/run/status
-  printf '# 001 — Scaffold app\n- **id**: a\n- **gate**: `true`\n' > .agent/queue/001-scaffold.md
-  printf '# 002 — Add models\n- **id**: b\n- **gate**: `pytest`\n'   > .agent/queue/002-models.md
-  printf '# 003 — Wire routes\n- **id**: c\n'                        > .agent/queue/003-routes.md
-  printf '# 004 — Health check\n- **id**: d\n'                       > .agent/queue/004-health.md
-  echo done > .agent/run/state/a; echo done > .agent/run/state/b
-  echo needs-human > .agent/run/state/c        # d has no state → todo
+  mkdir -p .autopilot/state .autopilot/tasks; echo RUNNING > .autopilot/status
+  printf '# 001 — Scaffold app\n- **id**: a\n- **gate**: `true`\n' > .autopilot/tasks/001-scaffold.md
+  printf '# 002 — Add models\n- **id**: b\n- **gate**: `pytest`\n'   > .autopilot/tasks/002-models.md
+  printf '# 003 — Wire routes\n- **id**: c\n'                        > .autopilot/tasks/003-routes.md
+  printf '# 004 — Health check\n- **id**: d\n'                       > .autopilot/tasks/004-health.md
+  echo done > .autopilot/state/a; echo done > .autopilot/state/b
+  echo needs-human > .autopilot/state/c        # d has no state → todo
   out="$("$AP" status 2>&1)"
   assert_contains "$out" "2 done · 0 blocked · 1 needs-human · 1 todo" "counts across queue + states"
   assert_contains "$out" "Scaffold app" "lists a task title"
@@ -68,8 +68,8 @@ mkdir -p "$TMP/scope/src/auth"; cd "$TMP/scope"
   git init -q
   echo "a" > src/auth/reset.ts; echo "b" > src/auth/login.ts; echo "c" > README.md
   git add -A && git -c user.email=t@t -c user.name=t commit -qm init
-  mkdir -p .agent/queue
-  cat > .agent/queue/001-x.md <<'EOF'
+  mkdir -p .autopilot/tasks
+  cat > .autopilot/tasks/001-x.md <<'EOF'
 # 001 — x
 - **gate**: `true`
 ## Allowed Files
@@ -80,15 +80,43 @@ mkdir -p "$TMP/scope/src/auth"; cd "$TMP/scope"
 EOF
   # in-scope change (allowed file + under allowed dir)
   echo "a2" > src/auth/reset.ts; echo "n" > src/auth/new.ts
-  out="$("$AP" scope .agent/queue/001-x.md 2>&1)"; code=$?
+  out="$("$AP" scope .autopilot/tasks/001-x.md 2>&1)"; code=$?
   assert_contains "$out" "scope ok" "passes when changes are within Allowed Files"
   [ "$code" -eq 0 ] && ok "scope exits 0 in scope" || no "expected exit 0, got $code"
   # out-of-scope change (README.md not allowed)
   echo "c2" > README.md
-  out="$("$AP" scope .agent/queue/001-x.md 2>&1)"; code=$?
+  out="$("$AP" scope .autopilot/tasks/001-x.md 2>&1)"; code=$?
   assert_contains "$out" "SCOPE VIOLATION" "flags a change outside Allowed Files"
   assert_contains "$out" "README.md"       "names the offending file"
   [ "$code" -eq 2 ] && ok "scope exits 2 on violation" || no "expected exit 2, got $code"
+
+# --- gate: lint weak gates, run gates, two-tier verify, scoped revert --------
+echo "fixture: gate + verify"
+mkdir -p "$TMP/gate/src"; cd "$TMP/gate"
+  git init -q
+  echo "console.log(1)" > src/app.js; echo "ok" > keep.txt
+  git add -A && git -c user.email=t@t -c user.name=t commit -qm init
+  # gate-lint rejects weak gates, accepts real ones
+  printf '# 1 — x\n- **gate**: `true`\n## Allowed Files\n- src/app.js\n' > weak.md
+  "$AP" gate-lint weak.md >/dev/null 2>&1; [ "$?" -eq 2 ] && ok "gate-lint rejects a tautology gate" || no "weak gate not caught"
+  printf '# 1 — x\n- **gate**: `test -f src/app.js`\n## Allowed Files\n- src/app.js\n' > weakf.md
+  "$AP" gate-lint weakf.md >/dev/null 2>&1; [ "$?" -eq 2 ] && ok "gate-lint rejects 'test -f' without a content check" || no "test -f not caught"
+  printf '# 1 — x\n- **gate**: `test -s src/app.js`\n## Allowed Files\n- src/app.js\n' > strong.md
+  out="$("$AP" gate-lint strong.md 2>&1)"; [ "$?" -eq 0 ] && ok "gate-lint accepts a real check" || no "strong gate rejected"
+  # gate runner: pass and fail, provenance to journal
+  "$AP" gate strong.md >/dev/null 2>&1 && ok "gate runs and passes a green gate" || no "green gate failed"
+  [ -f .autopilot/journal.md ] && grep -q "gate" .autopilot/journal.md && ok "gate logs provenance to journal" || no "no journal provenance"
+  printf '# 2 — y\n- **gate**: `test -s missing.txt`\n## Allowed Files\n- src/app.js\n' > red.md
+  "$AP" gate red.md >/dev/null 2>&1; [ "$?" -ne 0 ] && ok "gate reports a red gate as failure" || no "red gate passed"
+  # verify: static project (no repo gate) → scope + task gate only
+  out="$("$AP" verify strong.md 2>&1)"; [ "$?" -eq 0 ] && ok "verify passes (scope + task gate, repo gate skipped)" || no "verify failed"
+  assert_contains "$out" "repo gate skipped" "verify notes no repo gate for a static project"
+  # scoped revert: touch two files, revert restores only the Allowed one
+  echo "DIRTY" > src/app.js; echo "DIRTY" > keep.txt
+  "$AP" revert strong.md >/dev/null 2>&1
+  grep -q DIRTY src/app.js && no "revert did not restore the allowed file" || ok "revert restores the Allowed File"
+  grep -q DIRTY keep.txt && ok "revert leaves out-of-scope files untouched" || no "revert touched an out-of-scope file"
+cd "$ROOT"
 
 # --- independent reviewer: backend dispatch + JSON validation ----------------
 echo "fixture: reviewer backend"

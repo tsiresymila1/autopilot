@@ -5,8 +5,12 @@
 #   autopilot run "<goal|file>" [opts] one session (needs the claude CLI)
 #   autopilot supervise "<goal>" [opts] relaunch across quota resets until DONE/BLOCKED
 #   autopilot resume                   resume the run in this repo
-#   autopilot status [--json]          aggregate task states from .agent/run/state
+#   autopilot status [--json]          aggregate task states from .autopilot/state
+#   autopilot verify <task.md> [ref]   two-tier proof: scope + task gate + repo gate
+#   autopilot gate <task.md> [--repo]  run the task gate (or the repo-wide gate)
+#   autopilot gate-lint <task.md>      reject a weak/cheatable gate
 #   autopilot scope <task.md> [ref]    changed files outside the task's Allowed Files
+#   autopilot revert <task.md>         restore only the task's Allowed Files (scoped)
 #   autopilot review <task.md> [ref]   independent JSON verdict (AUTOPILOT_REVIEWER)
 #   autopilot docs [status|init]       the durable-doc quad (committed source of truth)
 #   autopilot notify "<title>" "<msg>" fire a milestone notification (test the hook)
@@ -26,7 +30,7 @@ LIB="$HERE/lib"
 # shellcheck source=lib/common.sh
 . "$LIB/common.sh" || { echo "autopilot: cannot load $LIB/common.sh — broken install?" >&2; exit 1; }
 
-usage() { sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; }
 
 cmd="${1:-help}"; shift 2>/dev/null || true
 
@@ -47,14 +51,14 @@ case "$cmd" in
     fi ;;
 
   resume)
-    [ -d "$(ap_queue_dir)" ] || ap_die "no run to resume here (.agent/queue missing)"
+    [ -d "$(ap_tasks_dir)" ] || ap_die "no run to resume here (.autopilot/tasks missing)"
     command -v claude >/dev/null 2>&1 || ap_die "claude CLI not on PATH"
-    exec claude -p "/autopilot resume the run in .agent/ — read PROGRESS.md and run/state/*, restart at the first task not done" \
+    exec claude -p "/autopilot resume the run in .autopilot/ — read journal.md and state/*, restart at the first task not done" \
       --permission-mode "${PERMISSION_MODE:-bypassPermissions}" ;;
 
   status)
     # Per-task view: walk the queue, resolve each task's state, tally, print a table.
-    sd="$(ap_task_state)"; qd="$(ap_queue_dir)"
+    sd="$(ap_task_state)"; qd="$(ap_tasks_dir)"
     st="$(cat "$(ap_status_file)" 2>/dev/null || echo NONE)"
     json="${1:-}"
     done=0; blocked=0; human=0; todo=0; rows=""; jtasks=""
@@ -84,7 +88,7 @@ case "$cmd" in
       echo "run status: $st"
       echo "$done done · $blocked blocked · $human needs-human · $todo todo"
       [ -n "$rows" ] && { echo; printf '%s' "$rows"; }
-      [ -f "$(ap_state_dir)/HUMAN-INBOX.md" ] && { echo; echo "human inbox: $(ap_state_dir)/HUMAN-INBOX.md"; }
+      [ -f "$(ap_inbox)" ] && { echo; echo "human inbox: $(ap_inbox)"; }
       true
     fi ;;
 
@@ -94,10 +98,7 @@ case "$cmd" in
     task="${1:?usage: autopilot scope <task-file.md> [git-ref]}"; ref="${2:-HEAD}"
     [ -f "$task" ] || ap_die "no such task file: $task"
     tmp="$(mktemp)"; trap 'rm -f "$tmp"' EXIT
-    # Extract bullet paths under "## Allowed Files" until the next "## " heading.
-    awk '/^##[[:space:]]+Allowed Files/{f=1;next} /^##[[:space:]]/{f=0} f' "$task" \
-      | sed -n 's/^[[:space:]]*[-*][[:space:]]*`\{0,1\}\([^`]*\)`\{0,1\}[[:space:]]*$/\1/p' \
-      > "$tmp"
+    ap_allowed_paths "$task" > "$tmp"
     [ -s "$tmp" ] || ap_die "task has no '## Allowed Files' paths — every task must declare its scope" 2
     v="$(ap_scope_violations "$tmp" "$ref")"
     if [ -n "$v" ]; then
@@ -105,6 +106,54 @@ case "$cmd" in
       exit 2
     fi
     echo "scope ok — all changes within ## Allowed Files" ;;
+
+  gate-lint)
+    # autopilot gate-lint <task-file.md>  — reject a weak/cheatable gate. Exit 2 if weak.
+    task="${1:?usage: autopilot gate-lint <task-file.md>}"; [ -f "$task" ] || ap_die "no such task file: $task"
+    g="$(ap_gate_of "$task")"
+    if ap_gate_weak "$g"; then
+      ap_warn "weak gate: \`${g:-<none>}\` — proves nothing. Use a real check (test -s, a passing test, tsc --noEmit, a smoke run)."
+      exit 2
+    fi
+    echo "gate ok — \`$g\`" ;;
+
+  gate)
+    # autopilot gate <task-file.md> [--repo]  — run the task gate (or the repo gate).
+    # Reproducible: from repo root, output to .autopilot/logs/, provenance to journal.
+    task="${1:?usage: autopilot gate <task-file.md> [--repo]}"; [ -f "$task" ] || ap_die "no such task file: $task"
+    if [ "${2:-}" = "--repo" ]; then
+      g="$(ap_default_gate)"; [ -n "$g" ] || ap_die "no repo gate for this project type — rely on per-task gates" 2
+      ap_run_gate "repo" "$g"; rc=$?
+    else
+      g="$(ap_gate_of "$task")"; [ -n "$g" ] || ap_die "task has no gate — not ready" 2
+      ap_run_gate "$(ap_id_of "$task")" "$g"; rc=$?
+    fi
+    [ "$rc" -eq 0 ] && echo "gate PASS — \`$g\`" || echo "gate FAIL (exit $rc) — \`$g\` (see .autopilot/logs/)"
+    exit "$rc" ;;
+
+  verify)
+    # autopilot verify <task-file.md> [git-ref]  — the two-tier completion proof:
+    # scope ⊆ Allowed Files, task gate green, AND the repo gate green (no wider break).
+    task="${1:?usage: autopilot verify <task-file.md> [git-ref]}"; ref="${2:-HEAD}"
+    [ -f "$task" ] || ap_die "no such task file: $task"
+    fail=0
+    "$0" scope "$task" "$ref"  >/dev/null 2>&1 && echo "  ✓ scope"      || { echo "  ✗ scope — changes outside ## Allowed Files"; fail=1; }
+    "$0" gate  "$task"         >/dev/null 2>&1 && echo "  ✓ task gate"  || { echo "  ✗ task gate failed"; fail=1; }
+    if [ -n "$(ap_default_gate)" ]; then
+      "$0" gate "$task" --repo >/dev/null 2>&1 && echo "  ✓ repo gate"  || { echo "  ✗ repo gate failed — the change broke the wider build/tests"; fail=1; }
+    else
+      echo "  · repo gate skipped (no default for this project type)"
+    fi
+    [ "$fail" -eq 0 ] && { echo "verify PASS"; exit 0; } || { echo "verify FAIL"; exit 2; }
+    ;;
+
+  revert)
+    # autopilot revert <task-file.md>  — restore ONLY the task's Allowed Files (scoped
+    # revert, never a global reset), so a rejected task leaves no half-done work.
+    task="${1:?usage: autopilot revert <task-file.md>}"; [ -f "$task" ] || ap_die "no such task file: $task"
+    paths="$(ap_allowed_paths "$task")"; [ -n "$paths" ] || ap_die "task has no ## Allowed Files to revert" 2
+    echo "$paths" | while IFS= read -r p; do [ -n "$p" ] && git checkout -- "$p" 2>/dev/null; done
+    echo "reverted the task's Allowed Files to HEAD" ;;
 
   review)
     # autopilot review <task-file.md> [git-ref]  — independent JSON verdict.

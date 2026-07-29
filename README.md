@@ -45,8 +45,12 @@ autopilot doctor [--yes]            # is this project ready? what status?
 autopilot run "<goal or file>"      # one session (needs the claude CLI)
 autopilot supervise "<goal>"        # relaunch across quota resets until DONE/BLOCKED
 autopilot resume                    # resume the run in this repo
-autopilot status [--json]           # aggregate task states
+autopilot status [--json]           # per-task table + counts
+autopilot verify <task.md> [ref]    # two-tier proof: scope + task gate + repo gate
+autopilot gate <task.md> [--repo]   # run the task gate (or the repo-wide gate)
+autopilot gate-lint <task.md>       # reject a weak / cheatable gate
 autopilot scope <task.md> [ref]     # changed files outside the task's ## Allowed Files
+autopilot revert <task.md>          # restore only the task's Allowed Files (scoped)
 autopilot review <task.md> [ref]    # independent JSON verdict from another model
 autopilot docs [status|init]        # the durable-doc quad (committed source of truth)
 autopilot notify "<title>" "<msg>"  # fire a milestone notification (test the hook)
@@ -71,11 +75,11 @@ What happens, hands-off:
 1. **doctor** sees an empty dir → `greenfield`, runs `git init`.
 2. **Phase 1** — writes the durable quad (`docs/REQUIREMENTS.md`, `ARCHITECTURE.md`,
    `TASK_BACKLOG.md`, `TEST_STRATEGY.md`), then a queue of gated tasks under
-   `.agent/queue/` (scaffold app → models → CRUD routes → health → tests). Each task gets
+   `.autopilot/tasks/` (scaffold app → models → CRUD routes → health → tests). Each task gets
    a gate like `python -m pytest -q` and an `## Allowed Files` whitelist.
-3. **Phase 2** — for each task: `builder` writes code + tests → the gate runs →
-   `autopilot scope` checks the diff stayed in its lane → `reviewer` checks quality →
-   `writer` commits. Anything only a human can decide → `.agent/HUMAN-INBOX.md`.
+3. **Phase 2** — for each task: `builder` writes code + tests → `autopilot verify` proves
+   it (scope ⊆ Allowed Files + task gate + repo gate all green) → `reviewer` checks quality
+   → `writer` commits. Anything only a human can decide → `.autopilot/inbox.md`.
 4. **Phase 4** — an ntfy push: `autopilot: DONE`.
 
 Then:
@@ -89,7 +93,7 @@ autopilot status              # per-task table:
 #     ⚑  needs-human  006 — Deploy config (needs a secret)
 #     ·  todo         007 — Rate limiting
 git log --oneline             # one commit per task
-cat .agent/HUMAN-INBOX.md      # what's left for you
+cat .autopilot/inbox.md      # what's left for you
 ```
 
 ## Contexts — same engine, different entry
@@ -182,18 +186,20 @@ skill uses `/speckit-specify|plan|tasks` (scaffolding a project with
 `specify init --here --integration claude --force` on first use); otherwise it decomposes
 the goal plainly. `doctor` tells you which.
 
-State lives in `.agent/` (git-ignored, local to the worktree):
+State lives in `.autopilot/` (git-ignored, local to the worktree):
 
 ```
-.agent/run/status          RUNNING | DONE | BLOCKED
-.agent/run/lock            supervisor pid — two runs never collide
-.agent/run/state/<id>      done | blocked | needs-human   (one per task)
-.agent/queue/NNN-slug.md   task specs (each: gate + ## Allowed Files + ## NEVER)
-.agent/PROGRESS.md         the journal — decisions logged as they are made
-.agent/HUMAN-INBOX.md      everything awaiting a human
+.autopilot/status            RUNNING | DONE | BLOCKED
+.autopilot/lock              supervisor pid — two runs never collide
+.autopilot/state/<id>        done | blocked | needs-human   (one per task)
+.autopilot/tasks/NNN-slug.md task specs (each: gate + ## Allowed Files + ## NEVER)
+.autopilot/plan.md           the Phase-1 decomposition
+.autopilot/journal.md        decisions + gate provenance, logged as they happen
+.autopilot/inbox.md          everything awaiting a human
+.autopilot/logs/             supervisor.log + session-<ts>.log (supervise runs)
 ```
 
-`autopilot status --json` aggregates `run/state/*` on demand — there is no second copy
+`autopilot status --json` aggregates `state/*` on demand — there is no second copy
 of the state to keep in sync.
 
 ## Scope control — the whitelist is enforced, not suggested
@@ -203,8 +209,28 @@ runs, `autopilot scope <task.md>` diffs the working tree and **fails if any chan
 strays outside the whitelist** — the machine-checkable form of "stay in your lane",
 borrowed from the dual-model orchestrator pattern. A file genuinely needed but not
 listed triggers the **scope-expansion protocol**: concrete paths are added to the
-whitelist on the record (logged in `PROGRESS.md`), broad/ambiguous ones become a new
+whitelist on the record (logged in `journal.md`), broad/ambiguous ones become a new
 task or `needs-human`. Never a silent drift.
+
+## Robust execution — completion is proven, not claimed
+
+The loop is built from small deterministic CLI verbs, so robustness is tested, not just
+described in the skill:
+
+- **Two-tier verification.** A task is done only when `autopilot verify` passes all three:
+  scope ⊆ Allowed Files, the **task gate** (this task's narrow proof), and the **repo gate**
+  (the project's build + full test suite + lint). A task can't go green by passing its own
+  mini-test while breaking the wider repo — the classic narrow-gate blind spot.
+- **Weak gates are rejected.** `autopilot gate-lint` refuses a gate that proves nothing —
+  `true`, `echo …`, or a bare `test -f` (which passes on an empty file). The gate must be a
+  real check: `test -s`, a passing test, `tsc --noEmit`, a smoke run.
+- **The base stays green.** The repo gate must pass before a task starts and after each
+  commit; autopilot never builds on a red base.
+- **Reproducible gate runs.** `autopilot gate` runs from the repo root, captures output to
+  `.autopilot/logs/`, and appends provenance (command + exit code) to `journal.md`.
+- **Scoped revert.** A rejected task is undone with `autopilot revert` — `git checkout` of
+  only its Allowed Files, never a global `reset --hard` — so the tree never carries
+  half-done work and unrelated changes are untouched.
 
 ## Notifications — you walk away, it pings you
 
@@ -214,7 +240,7 @@ fires a notification so you don't have to watch the terminal:
 | State | Notified |
 |---|---|
 | `DONE` | nothing left to do |
-| `BLOCKED` | a human is needed (see `.agent/HUMAN-INBOX.md`) |
+| `BLOCKED` | a human is needed (see `.autopilot/inbox.md`) |
 | relaunch cap hit | still not done after N relaunches |
 
 The main backend is **ntfy** — push to your phone from anywhere. Pick a topic and
@@ -235,18 +261,18 @@ reports which is active.
 
 ## Logs, progress, and agent output
 
-Everything a run produces lives under `.agent/` (git-ignored):
+Everything a run produces lives under `.autopilot/` (git-ignored):
 
 ```
-.agent/PROGRESS.md              the journal — every decision, gate result, and action,
+.autopilot/journal.md              the journal — every decision, gate result, and action,
                                 logged at the moment it happens. Read this first.
-.agent/HUMAN-INBOX.md           what is waiting on you (decisions, secrets, merges).
-.agent/PLAN-SUMMARY.md          the Phase-1 decomposition, risks, and execution order.
-.agent/queue/NNN-slug.md        the task specs (gate + Allowed Files + steps + NEVER).
-.agent/run/state/<id>           per-task state: done | blocked | needs-human.
-.agent/run/status               RUNNING | DONE | BLOCKED.
-.agent/run-logs/supervisor.log  the supervisor's own log: each session, quota waits.
-.agent/run-logs/run-<ts>.log    full session output per relaunch — this is where the
+.autopilot/inbox.md           what is waiting on you (decisions, secrets, merges).
+.autopilot/plan.md          the Phase-1 decomposition, risks, and execution order.
+.autopilot/tasks/NNN-slug.md        the task specs (gate + Allowed Files + steps + NEVER).
+.autopilot/state/<id>           per-task state: done | blocked | needs-human.
+.autopilot/status               RUNNING | DONE | BLOCKED.
+.autopilot/logs/supervisor.log  the supervisor's own log: each session, quota waits.
+.autopilot/logs/run-<ts>.log    full session output per relaunch — this is where the
                                 subagents' work (builder, reviewer, …) is captured.
 ```
 
@@ -255,28 +281,28 @@ Practical commands:
 ```bash
 autopilot status               # counts + a per-task table (icon, state, title)
 autopilot status --json        # same, machine-readable, with a per-task array
-tail -f .agent/run-logs/supervisor.log        # watch a supervise run live
-tail -n 200 .agent/run-logs/run-*.log | less  # what an agent actually did last session
-cat .agent/PROGRESS.md          # the decision journal
-sed -n '/^# NNN/,/Done when/p' .agent/queue/042-*.md   # inspect one task's spec + gate
+tail -f .autopilot/logs/supervisor.log        # watch a supervise run live
+tail -n 200 .autopilot/logs/run-*.log | less  # what an agent actually did last session
+cat .autopilot/journal.md          # the decision journal
+sed -n '/^# NNN/,/Done when/p' .autopilot/tasks/042-*.md   # inspect one task's spec + gate
 ```
 
 `autopilot run` (foreground) streams to your terminal. `autopilot supervise` (background,
-survives quota resets) is the one that files the `run-logs/`.
+survives quota resets) is the one that files the `logs/`.
 
 ## When a task fails, blocks, or needs you
 
-A task ends in exactly one of three states — visible in `.agent/run/state/<id>` and
+A task ends in exactly one of three states — visible in `.autopilot/state/<id>` and
 counted by `autopilot status`:
 
 | State | Meaning | What to do |
 |---|---|---|
 | `done` | gate passed, reviewed, committed | nothing |
-| `blocked` | gate stayed red after 2 build attempts, or the reviewer flagged it `Risky` (reverted) | read `PROGRESS.md` for the reason; fix the blocker, then `autopilot resume` |
-| `needs-human` | code may be finished; a human action/decision remains (a merge, an architecture call, a secret to rotate) | do the item in `HUMAN-INBOX.md`, then `autopilot resume` |
+| `blocked` | gate stayed red after 2 build attempts, or the reviewer flagged it `Risky` (reverted) | read `journal.md` for the reason; fix the blocker, then `autopilot resume` |
+| `needs-human` | code may be finished; a human action/decision remains (a merge, an architecture call, a secret to rotate) | do the item in `inbox.md`, then `autopilot resume` |
 
 **Resume is safe and never restarts from scratch.** State is on disk, so relaunching
-reads `PROGRESS.md` (decisions stand), `run/state/*` (which tasks are done) and the queue,
+reads `journal.md` (decisions stand), `state/*` (which tasks are done) and the queue,
 then continues at the first task not `done` whose dependencies are met:
 
 ```bash
@@ -284,7 +310,7 @@ autopilot resume                    # picks up where it stopped, in this repo
 autopilot supervise "<same goal>"   # same thing across quota resets (it detects the resume)
 ```
 
-The interrupted session (crash, quota, Ctrl-C) leaves `.agent/run/status` = `RUNNING`;
+The interrupted session (crash, quota, Ctrl-C) leaves `.autopilot/status` = `RUNNING`;
 the supervisor treats that as "resume me". A pid `lock` prevents two runs colliding.
 
 If the whole run stopped at `BLOCKED` (base gates red, or three tasks blocked in a row),
