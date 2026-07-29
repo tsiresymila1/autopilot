@@ -152,8 +152,10 @@ out="$(HOME="$FAKE" bash "$ROOT/install.sh" 2>&1)"
 [ -L "$FAKE/.claude/agents/reviewer.md" ] && ok "install links a fresh agent" || no "agent not linked"
 grep -q "MY OWN builder" "$FAKE/.claude/agents/builder.md" && ok "install never clobbers an existing agent" || no "clobbered user agent"
 assert_contains "$out" "kept yours" "reports the kept user agent"
-# the linked CLI actually runs
-"$FAKE/.local/bin/autopilot" help >/dev/null 2>&1 && ok "linked CLI is runnable" || no "linked cli broken"
+# the linked CLI runs a lib-dependent command through the symlink (catches HERE
+# resolution bugs that a bare `help` — which never sources lib — would miss)
+sout="$("$FAKE/.local/bin/autopilot" status 2>&1)"
+assert_contains "$sout" "run status" "linked CLI resolves lib through the symlink"
 
 echo
 echo "== $pass passed, $fail failed =="

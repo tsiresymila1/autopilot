@@ -13,10 +13,16 @@
 #
 # opts forwarded to the skill: --dry-run, --max-tasks N, --yes
 set -uo pipefail
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Resolve through symlinks (the installer links this onto PATH) to find the repo.
+src="${BASH_SOURCE[0]}"
+while [ -L "$src" ]; do
+  d="$(cd -P "$(dirname "$src")" && pwd)"; src="$(readlink "$src")"
+  case "$src" in /*) ;; *) src="$d/$src" ;; esac
+done
+HERE="$(cd -P "$(dirname "$src")/.." && pwd)"
 LIB="$HERE/lib"
 # shellcheck source=lib/common.sh
-. "$LIB/common.sh"
+. "$LIB/common.sh" || { echo "autopilot: cannot load $LIB/common.sh — broken install?" >&2; exit 1; }
 
 usage() { sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; }
 
