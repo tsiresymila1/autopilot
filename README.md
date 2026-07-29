@@ -147,6 +147,13 @@ Forwarded to the skill: `--dry-run`, `--max-tasks N`, `--yes`.
 
 Inside a Claude session, `/autopilot <goal>` runs the skill directly.
 
+**Permissions.** Autonomy needs no prompts: `run`, `resume`, and `supervise` launch Claude
+with `--permission-mode bypassPermissions`, so the gate commands, git, and edits never
+stall waiting for approval. The safety net is autopilot's own rules — the `## NEVER` list,
+the `## Allowed Files` scope check, and the "never done autonomously" list below (no push,
+deploy, `rm -rf`, secrets…). Downgrade with `PERMISSION_MODE=acceptEdits autopilot run …`
+if you'd rather approve each shell command yourself (it will stop and wait).
+
 ## Project status — adapts, does not assume
 
 `doctor` classifies the project and the run adapts:

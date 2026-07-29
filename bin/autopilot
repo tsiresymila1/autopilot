@@ -43,14 +43,14 @@ case "$cmd" in
       bash "$LIB/supervisor.sh" "$goal" "$@"
     else
       command -v claude >/dev/null 2>&1 || ap_die "claude CLI not on PATH"
-      exec claude -p "/autopilot $goal $*" --permission-mode "${PERMISSION_MODE:-acceptEdits}"
+      exec claude -p "/autopilot $goal $*" --permission-mode "${PERMISSION_MODE:-bypassPermissions}"
     fi ;;
 
   resume)
     [ -d "$(ap_queue_dir)" ] || ap_die "no run to resume here (.agent/queue missing)"
     command -v claude >/dev/null 2>&1 || ap_die "claude CLI not on PATH"
     exec claude -p "/autopilot resume the run in .agent/ — read PROGRESS.md and run/state/*, restart at the first task not done" \
-      --permission-mode "${PERMISSION_MODE:-acceptEdits}" ;;
+      --permission-mode "${PERMISSION_MODE:-bypassPermissions}" ;;
 
   status)
     # Per-task view: walk the queue, resolve each task's state, tally, print a table.

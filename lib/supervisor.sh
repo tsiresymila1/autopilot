@@ -19,7 +19,7 @@ EXTRA="$*"
 
 MAX_RELAUNCH="${MAX_RELAUNCH:-24}"
 RETRY_WAIT="${RETRY_WAIT:-900}"                 # fallback wait if reset time unknown
-PERMISSION_MODE="${PERMISSION_MODE:-acceptEdits}"
+PERMISSION_MODE="${PERMISSION_MODE:-bypassPermissions}"
 
 command -v claude >/dev/null 2>&1 || ap_die "claude CLI not on PATH"
 cd "$(ap_root)" || exit 1
