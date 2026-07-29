@@ -67,8 +67,8 @@ for i in $(seq 1 "$MAX_RELAUNCH"); do
   log "session ended (code $code) · status=$status"
 
   case "$status" in
-    DONE)    log "✅ done — nothing left"; tail -40 "$OUT"; exit 0 ;;
-    BLOCKED) log "⛔ blocked — human needed (see .agent/HUMAN-INBOX.md)"; tail -40 "$OUT"; exit 2 ;;
+    DONE)    log "✅ done — nothing left"; ap_notify "autopilot: DONE" "$GOAL — nothing left to do"; tail -40 "$OUT"; exit 0 ;;
+    BLOCKED) log "⛔ blocked — human needed (see .agent/HUMAN-INBOX.md)"; ap_notify "autopilot: BLOCKED" "$GOAL — human needed (.agent/HUMAN-INBOX.md)"; tail -40 "$OUT"; exit 2 ;;
   esac
 
   if grep -qiE 'usage limit|rate limit|quota|too many requests|limite.*atteinte|429' "$OUT"; then
@@ -81,4 +81,5 @@ for i in $(seq 1 "$MAX_RELAUNCH"); do
 done
 
 log "⚠️  hit the $MAX_RELAUNCH relaunch cap — stopping"
+ap_notify "autopilot: STOPPED" "$GOAL — hit the $MAX_RELAUNCH relaunch cap, still not done"
 exit 3

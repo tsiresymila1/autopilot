@@ -9,6 +9,7 @@
 #   autopilot scope <task.md> [ref]    changed files outside the task's Allowed Files
 #   autopilot review <task.md> [ref]   independent JSON verdict (AUTOPILOT_REVIEWER)
 #   autopilot docs [status|init]       the durable-doc quad (committed source of truth)
+#   autopilot notify "<title>" "<msg>" fire a milestone notification (test the hook)
 #   autopilot help
 #
 # opts forwarded to the skill: --dry-run, --max-tasks N, --yes
@@ -24,7 +25,7 @@ LIB="$HERE/lib"
 # shellcheck source=lib/common.sh
 . "$LIB/common.sh" || { echo "autopilot: cannot load $LIB/common.sh — broken install?" >&2; exit 1; }
 
-usage() { sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; }
 
 cmd="${1:-help}"; shift 2>/dev/null || true
 
@@ -98,6 +99,10 @@ case "$cmd" in
   docs)
     # autopilot docs [status|init]  — the durable-doc quad (committed source of truth).
     bash "$LIB/docs.sh" "$@" ;;
+
+  notify)
+    # autopilot notify "<title>" "<body>"  — fire a milestone notification (test the hook).
+    ap_notify "${1:-autopilot}" "${2:-}" ;;
 
   help|-h|--help) usage ;;
   *) ap_warn "unknown command: $cmd"; usage; exit 1 ;;

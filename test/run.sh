@@ -157,6 +157,25 @@ assert_contains "$out" "kept yours" "reports the kept user agent"
 sout="$("$FAKE/.local/bin/autopilot" status 2>&1)"
 assert_contains "$sout" "run status" "linked CLI resolves lib through the symlink"
 
+# --- notifications -----------------------------------------------------------
+echo "fixture: notifications"
+mkdir -p "$TMP/notif"; cd "$TMP/notif"
+  # custom hook receives title + body
+  hook="$TMP/notif/got.txt"
+  out="$(AUTOPILOT_NOTIFY="printf '%s|%s' \"\$AUTOPILOT_NOTIFY_TITLE\" \"\$AUTOPILOT_NOTIFY_BODY\" > '$hook'" \
+        "$AP" notify "T1" "B1" 2>&1)"
+  assert_contains "$out" "notified via AUTOPILOT_NOTIFY" "reports the custom hook fired"
+  [ -f "$hook" ] && assert_contains "$(cat "$hook")" "T1|B1" "hook receives title and body" || no "hook not invoked"
+  # ntfy takes priority when a topic is set; unreachable server → reported failure, run survives
+  out="$(AUTOPILOT_NTFY_TOPIC=mytopic AUTOPILOT_NTFY_SERVER=http://127.0.0.1:1 \
+        AUTOPILOT_NOTIFY="true" "$AP" notify "T" "B" 2>&1)"
+  assert_contains "$out" "ntfy" "ntfy backend chosen over the custom hook when a topic is set"
+  # doctor advertises the ntfy backend
+  ( cd "$TMP/notif" && git init -q )
+  dout="$(AUTOPILOT_NTFY_TOPIC=mytopic "$AP" doctor 2>&1)"
+  assert_contains "$dout" "notifications via ntfy" "doctor reports the ntfy backend"
+cd "$ROOT"
+
 echo
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ]

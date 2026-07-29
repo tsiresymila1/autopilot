@@ -68,6 +68,11 @@ else
 fi
 command -v claude >/dev/null 2>&1 && pass "claude CLI on PATH" \
                                   || note "claude CLI not on PATH — 'autopilot supervise' will not work"
+if [ -n "${AUTOPILOT_NTFY_TOPIC:-}" ]; then pass "notifications via ntfy (${AUTOPILOT_NTFY_SERVER:-https://ntfy.sh}/$AUTOPILOT_NTFY_TOPIC)"
+elif [ -n "${AUTOPILOT_NOTIFY:-}" ]; then pass "notifications via AUTOPILOT_NOTIFY hook"
+elif command -v osascript >/dev/null 2>&1; then pass "notifications via osascript (macOS, local only)"
+elif command -v notify-send >/dev/null 2>&1; then pass "notifications via notify-send (local only)"
+else note "no notifier — set AUTOPILOT_NTFY_TOPIC to be pinged on DONE/BLOCKED from anywhere"; fi
 rev="${AUTOPILOT_REVIEWER:-subagent}"
 if [ "$rev" = subagent ]; then
   note "reviewer: subagent (same model). Set AUTOPILOT_REVIEWER=codex for independent review"

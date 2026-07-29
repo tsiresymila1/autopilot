@@ -127,6 +127,33 @@ listed triggers the **scope-expansion protocol**: concrete paths are added to th
 whitelist on the record (logged in `PROGRESS.md`), broad/ambiguous ones become a new
 task or `needs-human`. Never a silent drift.
 
+## Notifications — you walk away, it pings you
+
+A `supervise` run can span hours and quota resets. When it reaches a terminal state it
+fires a notification so you don't have to watch the terminal:
+
+| State | Notified |
+|---|---|
+| `DONE` | nothing left to do |
+| `BLOCKED` | a human is needed (see `.agent/HUMAN-INBOX.md`) |
+| relaunch cap hit | still not done after N relaunches |
+
+The main backend is **ntfy** — push to your phone from anywhere. Pick a topic and
+subscribe to it in the ntfy app (or ntfy.sh in a browser):
+
+```bash
+export AUTOPILOT_NTFY_TOPIC=my-autopilot-a1b2c3      # required to enable ntfy
+# optional:
+export AUTOPILOT_NTFY_SERVER=https://ntfy.sh         # self-hosted server if you run one
+export AUTOPILOT_NTFY_TOKEN=tk_xxx                   # Bearer auth for private topics
+autopilot notify "test" "hello from autopilot"       # fire a test push
+```
+
+Backend priority, best-effort (never fails the run): **ntfy** (`AUTOPILOT_NTFY_TOPIC`) →
+custom `AUTOPILOT_NOTIFY` command (title/body in `$AUTOPILOT_NOTIFY_TITLE` /
+`$AUTOPILOT_NOTIFY_BODY`) → macOS `osascript` → Linux `notify-send` → none. `doctor`
+reports which is active.
+
 ## Never done autonomously
 
 `git push` · pull request · deploy · `rm -rf` · `git reset --hard` · force push ·

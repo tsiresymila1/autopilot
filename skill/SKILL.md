@@ -334,7 +334,8 @@ projects — `.agent/` is local and thrown away.
 autopilot supervise "ton objectif ou un fichier"
 ```
 Relaunches after each quota reset, resumes from `.agent/run/state`, holds a pid lock so
-two runs never collide.
+two runs never collide, and **pushes a notification on DONE / BLOCKED / relaunch-cap** so
+the user can walk away. Set `AUTOPILOT_NTFY_TOPIC` (ntfy) to be pinged on their phone.
 
 ## Rules
 
