@@ -157,6 +157,10 @@ Rules that keep them trustworthy:
 - `autopilot docs status` must be green (all four non-empty) before Phase 2. If a task
   would make a durable fact stale but cannot safely touch the owning doc, split it.
 
+Also read `docs/AI_MEMORY.md` if present (committed, optional): one-line lessons from past
+runs — gate patterns that worked, recurring blockers, conventions this project taught you.
+Let them shape the queue. You append to it in Phase 4.
+
 Each task then declares its `## Docs Impact` class: `no-doc` (internal/refactor/style),
 `backlog-only` (only sequencing/status → `TASK_BACKLOG.md`), or `full-durable` (behaviour,
 API, architecture, security, data model, ownership, or coverage changed → update every
@@ -318,6 +322,11 @@ Lead with what the user must act on, not what shipped:
 5. **Repo state** — branch, commits, are the base gates green.
 
 Counts, like the model to emulate: e.g. `77 done · 0 blocked · 1 needs-human`.
+
+Then **append durable lessons to `docs/AI_MEMORY.md`** (committed): a gate pattern that
+proved reliable, a blocker that recurred, a convention the codebase enforced. One line
+each, "what happened → what to do next time". This is the only state that survives across
+projects — `.agent/` is local and thrown away.
 
 ## Running past the usage limit
 

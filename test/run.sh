@@ -133,11 +133,27 @@ mkdir -p "$TMP/quad"; cd "$TMP/quad"; git init -q
   assert_contains "$out" "quad complete" "status reports complete after init"
   [ "$code" -eq 0 ] && ok "status exits 0 when quad present" || no "expected exit 0, got $code"
   grep -q "Owns:" docs/ARCHITECTURE.md && ok "scaffold states each doc's ownership" || no "missing Owns header"
+  [ -s docs/AI_MEMORY.md ] && ok "init scaffolds optional AI_MEMORY.md" || no "AI_MEMORY not scaffolded"
+  rm -f docs/AI_MEMORY.md; "$AP" docs status >/dev/null 2>&1
+  [ "$?" -eq 0 ] && ok "status stays green without AI_MEMORY (not gated)" || no "AI_MEMORY wrongly gated"
   # idempotent: re-init keeps filled docs
   echo "real content" >> docs/REQUIREMENTS.md
   "$AP" docs init >/dev/null 2>&1
   grep -q "real content" docs/REQUIREMENTS.md && ok "re-init never clobbers a filled doc" || no "clobbered content"
 cd "$ROOT"
+
+# --- install.sh into a throwaway HOME: links skill, cli, agents; no clobber ----
+echo "fixture: install.sh"
+FAKE="$TMP/home"; mkdir -p "$FAKE/.claude/agents"
+echo "MY OWN builder" > "$FAKE/.claude/agents/builder.md"   # pre-existing user file
+out="$(HOME="$FAKE" bash "$ROOT/install.sh" 2>&1)"
+[ -L "$FAKE/.claude/skills/autopilot" ] && ok "install links the skill" || no "skill not linked"
+[ -L "$FAKE/.local/bin/autopilot" ]     && ok "install links the CLI"   || no "cli not linked"
+[ -L "$FAKE/.claude/agents/reviewer.md" ] && ok "install links a fresh agent" || no "agent not linked"
+grep -q "MY OWN builder" "$FAKE/.claude/agents/builder.md" && ok "install never clobbers an existing agent" || no "clobbered user agent"
+assert_contains "$out" "kept yours" "reports the kept user agent"
+# the linked CLI actually runs
+"$FAKE/.local/bin/autopilot" help >/dev/null 2>&1 && ok "linked CLI is runnable" || no "linked cli broken"
 
 echo
 echo "== $pass passed, $fail failed =="

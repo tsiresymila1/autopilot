@@ -33,7 +33,14 @@ case "$cmd" in
         echo "<!-- autopilot maintains this durable doc. Replace stale claims with concise"
         echo "     current truth. Do not put another doc's facts here. -->"; } > "$f"
       echo "  ✓ scaffolded $d.md"
-    done ;;
+    done
+    # Optional cross-run memory — not part of the status gate.
+    mem="$dir/AI_MEMORY.md"
+    if [ ! -s "$mem" ]; then
+      { echo "# AI Memory"; echo; echo "> Short workflow lessons autopilot carries between runs."
+        echo "> Read in Phase 1, appended in Phase 4. Keep entries one line: what happened → what to do."; echo; } > "$mem"
+      echo "  ✓ scaffolded AI_MEMORY.md (optional)"
+    fi ;;
 
   status)
     missing=0
