@@ -96,6 +96,30 @@ mkdir -p "$TMP/rev"; cd "$TMP/rev"
   # backend returning garbage (no valid status) → error exit
   AUTOPILOT_REVIEWER=stub AUTOPILOT_REVIEWER_CMD='cat >/dev/null; echo "lol no json"' "$AP" review task.md >/dev/null 2>&1
   [ "$?" -ne 0 ] && ok "rejects a verdict with no valid status" || no "expected non-zero on garbage"
+
+# --- project-type + default-gate matrix across languages ---------------------
+# marker file → expected type → substring the default gate must contain
+echo "fixture: language detection matrix"
+run_type_case() {                        # <dir> <marker-file> <type> <gate-substr>
+  local d="$TMP/$1"; mkdir -p "$d"; : > "$d/$2"; ( cd "$d" && git init -q )
+  cd "$d"
+  local out; out="$("$AP" doctor 2>&1)"
+  assert_contains "$out" "type: $3" "$1: detects $3"
+  if [ -n "$4" ]; then assert_contains "$out" "$4" "$1: default gate for $3"; fi
+  cd "$ROOT"
+}
+run_type_case py1   pyproject.toml   python "pytest"
+run_type_case py2   requirements.txt python "pytest"
+run_type_case py3   setup.py         python "pytest"
+run_type_case rs    Cargo.toml       rust   "cargo test"
+run_type_case go1   go.mod           go     "go test"
+run_type_case php1  composer.json    php    "composer test"
+# a non-toolchain file → static, no default gate (skill designs one per task)
+echo "fixture: static project (no toolchain)"
+mkdir -p "$TMP/stat"; cd "$TMP/stat"; echo "hi" > index.html; git init -q
+  out="$("$AP" doctor 2>&1)"
+  assert_contains "$out" "type: static"        "static: detects static type"
+  assert_contains "$out" "no default gate"     "static: no default gate, skill designs one"
 cd "$ROOT"
 
 echo
