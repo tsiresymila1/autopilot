@@ -39,6 +39,9 @@ docs/plans/*.md                plans produced by recon tasks (these ARE committe
 Add `.agent/` to `.gitignore`. It is local to the worktree. `autopilot status --json`
 aggregates `run/state/*` on demand — do not keep a second copy of the state in sync.
 
+`AUTOPILOT_REVIEWER` selects who reviews: `subagent` (default, same model) or `codex`
+(an independent model — the builder cannot approve its own work). The doctor reports it.
+
 ### A task spec — `.agent/queue/NNN-slug.md`
 
 ```markdown
@@ -188,10 +191,17 @@ For each task in dependency order (skip those whose `depends` is not `done`):
 5. **Run the gate** — execute the shell command.
    - **passes** → the task is objectively done
    - **fails** → back to `builder` with the output; if the cause is unclear spawn `debugger`
-7. **Review** — spawn `reviewer` on the diff for quality (the gate proved completion, the
-   reviewer catches what a green gate cannot: security, design, hidden regressions).
-   - `Needs Fixes` → back to `builder`, re-run gate, re-review
-   - `Risky` → mark `blocked`, revert, log, next task
+7. **Review** — get an independent verdict on the diff (the gate proved completion; the
+   reviewer catches what a green gate cannot: security, design, hidden regressions, scope).
+   Prefer a **different model than the builder** — real independence beats self-review:
+   - Run `autopilot review .agent/queue/NNN-slug.md`.
+     - Prints JSON `{status, required_checks_passed, findings[]}` → use that verdict.
+     - Exits 10 (no external reviewer configured) → spawn the `reviewer` subagent instead.
+   - Map the verdict:
+     - `APPROVED` → proceed to Record
+     - `CHANGES_REQUESTED` → back to `builder` with the findings, re-run gate, re-review
+     - `SCOPE_EXPANSION_REQUIRED` → apply the scope-expansion protocol
+     - `RISKY` → mark `blocked`, revert, log, next task
 8. **Record**:
    - `echo done > .agent/run/state/<id>` (or `blocked` / `needs-human`)
    - append to `PROGRESS.md`: task id, what was done, gate result, decisions taken

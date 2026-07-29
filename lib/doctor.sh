@@ -68,6 +68,16 @@ else
 fi
 command -v claude >/dev/null 2>&1 && pass "claude CLI on PATH" \
                                   || note "claude CLI not on PATH — 'autopilot supervise' will not work"
+rev="${AUTOPILOT_REVIEWER:-subagent}"
+if [ "$rev" = subagent ]; then
+  note "reviewer: subagent (same model). Set AUTOPILOT_REVIEWER=codex for independent review"
+elif [ "$rev" = codex ] && command -v codex >/dev/null 2>&1; then
+  pass "reviewer: codex (independent of the builder model)"
+elif [ "$rev" = codex ]; then
+  note "reviewer=codex but codex not on PATH — will fall back to the subagent"
+else
+  pass "reviewer: $rev (custom via AUTOPILOT_REVIEWER_CMD)"
+fi
 
 echo
 if [ "$ptype" = empty ]; then

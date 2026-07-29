@@ -80,6 +80,22 @@ EOF
   assert_contains "$out" "SCOPE VIOLATION" "flags a change outside Allowed Files"
   assert_contains "$out" "README.md"       "names the offending file"
   [ "$code" -eq 2 ] && ok "scope exits 2 on violation" || no "expected exit 2, got $code"
+
+# --- independent reviewer: backend dispatch + JSON validation ----------------
+echo "fixture: reviewer backend"
+mkdir -p "$TMP/rev"; cd "$TMP/rev"
+  git init -q
+  echo "v1" > f.ts; git add -A && git -c user.email=t@t -c user.name=t commit -qm init
+  echo "v2" > f.ts                                   # uncommitted change to review
+  printf '# 1 — x\n- **gate**: `true`\n## Allowed Files\n- f.ts\n' > task.md
+  # default = subagent → exit 10 (skill reviews in-session)
+  "$AP" review task.md >/dev/null 2>&1; [ "$?" -eq 10 ] && ok "subagent default exits 10" || no "expected 10"
+  # stub external backend that returns APPROVED
+  out="$(AUTOPILOT_REVIEWER=stub AUTOPILOT_REVIEWER_CMD='cat >/dev/null; echo "{\"status\":\"APPROVED\",\"required_checks_passed\":true,\"findings\":[],\"summary\":\"ok\"}"' "$AP" review task.md 2>&1)"
+  assert_contains "$out" '"status":"APPROVED"' "external backend verdict passed through"
+  # backend returning garbage (no valid status) → error exit
+  AUTOPILOT_REVIEWER=stub AUTOPILOT_REVIEWER_CMD='cat >/dev/null; echo "lol no json"' "$AP" review task.md >/dev/null 2>&1
+  [ "$?" -ne 0 ] && ok "rejects a verdict with no valid status" || no "expected non-zero on garbage"
 cd "$ROOT"
 
 echo

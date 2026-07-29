@@ -26,7 +26,24 @@ autopilot supervise "<goal>"        # relaunch across quota resets until DONE/BL
 autopilot resume                    # resume the run in this repo
 autopilot status [--json]           # aggregate task states
 autopilot scope <task.md> [ref]     # changed files outside the task's ## Allowed Files
+autopilot review <task.md> [ref]    # independent JSON verdict from another model
 ```
+
+## Independent review — the builder can't approve itself
+
+`AUTOPILOT_REVIEWER` picks who reviews the diff:
+
+| Value | Reviewer | Independence |
+|---|---|---|
+| `subagent` (default) | a Claude subagent | same model as the builder |
+| `codex` | the `codex` CLI | **different model** — real separation |
+| *(custom)* | `$AUTOPILOT_REVIEWER_CMD` (reads prompt on stdin, writes JSON) | any model you wire |
+
+`autopilot review <task.md>` returns a strict JSON verdict
+(`APPROVED` / `CHANGES_REQUESTED` / `RISKY` / `SCOPE_EXPANSION_REQUIRED`) the loop
+branches on deterministically. With no external reviewer configured it exits 10 and the
+skill reviews in-session. Borrowed from the dual-model orchestrator; optional, so
+autopilot still runs single-model out of the box.
 
 Forwarded to the skill: `--dry-run`, `--max-tasks N`, `--yes`.
 
