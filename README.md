@@ -49,7 +49,11 @@ autopilot status [--json]           # aggregate task states
 autopilot scope <task.md> [ref]     # changed files outside the task's ## Allowed Files
 autopilot review <task.md> [ref]    # independent JSON verdict from another model
 autopilot docs [status|init]        # the durable-doc quad (committed source of truth)
+autopilot update                    # pull the latest version and re-link (alias: upgrade)
 ```
+
+Update to a newly-pushed version with `autopilot update` — it pulls the install dir and
+re-links (new agents, lib, and refreshed extras). Or re-run the curl one-liner.
 
 ## Durable docs — the committed source of truth
 

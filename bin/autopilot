@@ -10,6 +10,7 @@
 #   autopilot review <task.md> [ref]   independent JSON verdict (AUTOPILOT_REVIEWER)
 #   autopilot docs [status|init]       the durable-doc quad (committed source of truth)
 #   autopilot notify "<title>" "<msg>" fire a milestone notification (test the hook)
+#   autopilot update                   pull the latest version and re-link (alias: upgrade)
 #   autopilot help
 #
 # opts forwarded to the skill: --dry-run, --max-tasks N, --yes
@@ -25,7 +26,7 @@ LIB="$HERE/lib"
 # shellcheck source=lib/common.sh
 . "$LIB/common.sh" || { echo "autopilot: cannot load $LIB/common.sh — broken install?" >&2; exit 1; }
 
-usage() { sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; }
 
 cmd="${1:-help}"; shift 2>/dev/null || true
 
@@ -103,6 +104,19 @@ case "$cmd" in
   notify)
     # autopilot notify "<title>" "<body>"  — fire a milestone notification (test the hook).
     ap_notify "${1:-autopilot}" "${2:-}" ;;
+
+  update|upgrade)
+    # Pull the latest into the install dir (HERE is resolved through the symlink),
+    # then re-link so new agents/lib land and extras refresh.
+    git -C "$HERE" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+      || ap_die "install dir is not a git repo: $HERE — reinstall via the curl one-liner"
+    before="$(git -C "$HERE" rev-parse --short HEAD 2>/dev/null)"
+    echo "updating $HERE"
+    git -C "$HERE" pull --ff-only || ap_die "pull failed (local changes in $HERE?) — stash or reinstall"
+    after="$(git -C "$HERE" rev-parse --short HEAD 2>/dev/null)"
+    if [ "$before" = "$after" ]; then echo "already up to date ($after)"
+    else echo "updated $before → $after"; fi
+    bash "$HERE/install.sh" ;;
 
   help|-h|--help) usage ;;
   *) ap_warn "unknown command: $cmd"; usage; exit 1 ;;

@@ -157,6 +157,26 @@ assert_contains "$out" "kept yours" "reports the kept user agent"
 sout="$("$FAKE/.local/bin/autopilot" status 2>&1)"
 assert_contains "$sout" "run status" "linked CLI resolves lib through the symlink"
 
+# --- update: pulls a new version into the install dir and re-links ------------
+echo "fixture: update"
+G="git -c user.email=t@t -c user.name=t"
+SRC="$TMP/src"; $G clone -q "$ROOT" "$SRC"                 # a repo with all files
+cp "$ROOT/bin/autopilot" "$SRC/bin/autopilot"             # ensure SRC has THIS CLI (update cmd)
+( cd "$SRC"; $G add -A; $G commit -qm "sync cli" >/dev/null 2>&1 || true )
+CLONE="$TMP/inst"; $G clone -q "$SRC" "$CLONE"             # the install dir, now with update cmd
+( cd "$SRC"; echo "NEWVER" > UPDATE_MARKER; $G add -A; $G commit -qm "new version" )  # SRC ahead
+UHOME="$TMP/uhome"; mkdir -p "$UHOME/.local/bin"
+ln -sfn "$CLONE/bin/autopilot" "$UHOME/.local/bin/autopilot"
+before="$(git -C "$CLONE" rev-parse --short HEAD)"
+uout="$(HOME="$UHOME" AUTOPILOT_SKIP_EXTRAS=1 "$UHOME/.local/bin/autopilot" update 2>&1)"
+after="$(git -C "$CLONE" rev-parse --short HEAD)"
+[ "$before" != "$after" ] && ok "update pulls the new commit into the install dir" || no "did not advance HEAD"
+[ -f "$CLONE/UPDATE_MARKER" ] && ok "update brings in new files" || no "new file missing after update"
+assert_contains "$uout" "updated" "reports the version change"
+# second run = no-op
+uout="$(HOME="$UHOME" AUTOPILOT_SKIP_EXTRAS=1 "$UHOME/.local/bin/autopilot" update 2>&1)"
+assert_contains "$uout" "already up to date" "second update is a clean no-op"
+
 # --- notifications -----------------------------------------------------------
 echo "fixture: notifications"
 mkdir -p "$TMP/notif"; cd "$TMP/notif"
