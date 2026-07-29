@@ -166,8 +166,9 @@ Each task then declares its `## Docs Impact` class: `no-doc` (internal/refactor/
 API, architecture, security, data model, ownership, or coverage changed → update every
 owning doc it names).
 
-**Use spec-kit for the specification layer** when available (the doctor reports it). For
-anything non-trivial:
+**Use spec-kit for the specification layer** when available (the doctor reports it). If
+the `specify` CLI is installed but this project has no spec-kit yet, scaffold it once:
+`specify init --here --integration claude --force`. Then, for anything non-trivial:
 
 ```
 /speckit-specify   → what to build
@@ -175,7 +176,7 @@ anything non-trivial:
 /speckit-tasks     → an ordered task list
 ```
 
-No spec-kit → decompose plainly into the same ordered task list. Either way, **turn each
+No spec-kit and no `specify` CLI → decompose plainly into the same ordered task list. Either way, **turn each
 task into a queue file** `.agent/queue/NNN-slug.md` and **give each one a gate**.
 
 ### Designing the gate (the hard, non-optional part)

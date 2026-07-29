@@ -46,6 +46,31 @@ for f in "$HERE"/agents/*.md; do
     echo "  • $name exists (not ours) — kept yours; rm it to let autopilot manage it"
   fi
 done
+# --- companion tools (best-effort; never fail the core install) --------------
+# Skip with AUTOPILOT_SKIP_EXTRAS=1 (used by tests and by users who don't want them).
+if [ -z "${AUTOPILOT_SKIP_EXTRAS:-}" ]; then
+  echo "extras:"
+  # ponytail — "lazy senior dev" plugin, sharpens the builder's restraint (global).
+  if command -v claude >/dev/null 2>&1; then
+    claude plugin marketplace add "${AUTOPILOT_PONYTAIL_REPO:-DietrichGebert/ponytail}" >/dev/null 2>&1 || true
+    if claude plugin install ponytail@ponytail >/dev/null 2>&1; then echo "  ✓ ponytail plugin"
+    else echo "  • ponytail: already present or unavailable — skipped"; fi
+  else
+    echo "  • ponytail: needs the claude CLI — skipped"
+  fi
+  # spec-kit — the specify CLI (global). Per-project scaffolding happens at run time:
+  #   specify init --here --integration claude --force
+  if command -v specify >/dev/null 2>&1; then
+    echo "  ✓ spec-kit (specify already installed)"
+  elif command -v uv >/dev/null 2>&1; then
+    if uv tool install specify-cli --from git+https://github.com/github/spec-kit.git >/dev/null 2>&1; then
+      echo "  ✓ spec-kit (specify CLI)"
+    else echo "  • spec-kit: install failed — try 'uv tool install specify-cli --from git+https://github.com/github/spec-kit.git'"; fi
+  else
+    echo "  • spec-kit: needs uv (https://docs.astral.sh/uv) — skipped"
+  fi
+fi
+
 case ":$PATH:" in
   *":$HOME/.local/bin:"*) ;;
   *) echo; echo "note: add ~/.local/bin to PATH:"; echo '  export PATH="$HOME/.local/bin:$PATH"' ;;

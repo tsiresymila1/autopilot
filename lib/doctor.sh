@@ -61,11 +61,13 @@ if [ -z "$missing" ]; then
 else
   note "missing subagents:$missing — run ./install.sh to link them"
 fi
-if ls "$HOME/.claude"/commands/speckit-* "$HOME/.claude"/skills/speckit* >/dev/null 2>&1; then
-  pass "spec-kit available"
+if command -v specify >/dev/null 2>&1 || ls "$root/.specify" "$HOME/.claude"/commands/speckit-* >/dev/null 2>&1; then
+  pass "spec-kit available (specify CLI or scaffolded)"
 else
-  note "spec-kit not found — the skill falls back to plain task decomposition"
+  note "spec-kit not found — 'uv tool install specify-cli --from git+https://github.com/github/spec-kit.git', or the skill falls back to plain decomposition"
 fi
+if claude plugin list 2>/dev/null | grep -qi ponytail; then pass "ponytail plugin installed"
+else note "ponytail not installed — install.sh sets it up (best-effort)"; fi
 command -v claude >/dev/null 2>&1 && pass "claude CLI on PATH" \
                                   || note "claude CLI not on PATH — 'autopilot supervise' will not work"
 if [ -n "${AUTOPILOT_NTFY_TOPIC:-}" ]; then pass "notifications via ntfy (${AUTOPILOT_NTFY_SERVER:-https://ntfy.sh}/$AUTOPILOT_NTFY_TOPIC)"

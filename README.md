@@ -25,8 +25,18 @@ From a checkout:
 Both symlink the skill into `~/.claude/skills/autopilot`, the CLI into `~/.local/bin`,
 and the subagents into `~/.claude/agents` (existing files kept). Idempotent — re-run to
 update. The network install clones to `~/.local/share/autopilot`; re-running it pulls the
-latest. Env overrides: `AUTOPILOT_REPO` (git url), `AUTOPILOT_DIR` (clone target),
-`CLAUDE_HOME`.
+latest.
+
+It also sets up two companion tools, best-effort (a failure never blocks the core install):
+
+- **ponytail** — the "lazy senior dev" plugin, installed via `claude plugin` — sharpens
+  the builder's restraint.
+- **spec-kit** — the `specify` CLI, installed via `uv tool install` — the specification
+  layer. Per project, the skill scaffolds it on first use with
+  `specify init --here --integration claude --force`. Needs [uv](https://docs.astral.sh/uv).
+
+Skip both with `AUTOPILOT_SKIP_EXTRAS=1`. Env overrides: `AUTOPILOT_REPO` (git url),
+`AUTOPILOT_DIR` (clone target), `AUTOPILOT_PONYTAIL_REPO`, `CLAUDE_HOME`.
 
 ## Use
 

@@ -146,7 +146,7 @@ cd "$ROOT"
 echo "fixture: install.sh"
 FAKE="$TMP/home"; mkdir -p "$FAKE/.claude/agents"
 echo "MY OWN builder" > "$FAKE/.claude/agents/builder.md"   # pre-existing user file
-out="$(HOME="$FAKE" bash "$ROOT/install.sh" 2>&1)"
+out="$(HOME="$FAKE" AUTOPILOT_SKIP_EXTRAS=1 bash "$ROOT/install.sh" 2>&1)"
 [ -L "$FAKE/.claude/skills/autopilot" ] && ok "install links the skill" || no "skill not linked"
 [ -L "$FAKE/.local/bin/autopilot" ]     && ok "install links the CLI"   || no "cli not linked"
 [ -L "$FAKE/.claude/agents/reviewer.md" ] && ok "install links a fresh agent" || no "agent not linked"
