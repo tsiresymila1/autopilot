@@ -10,12 +10,23 @@ parks human-only matters in an inbox, and keeps going.
 
 ## Install
 
+Over the network (clones the repo, then links):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tsiresymila/autopilot/main/install.sh | bash
+```
+
+From a checkout:
+
 ```bash
 ./install.sh
 ```
 
-Symlinks the skill into `~/.claude/skills/autopilot` and the CLI into `~/.local/bin`.
-Idempotent — re-run after pulling updates. Set `CLAUDE_HOME` to install elsewhere.
+Both symlink the skill into `~/.claude/skills/autopilot`, the CLI into `~/.local/bin`,
+and the subagents into `~/.claude/agents` (existing files kept). Idempotent — re-run to
+update. The network install clones to `~/.local/share/autopilot`; re-running it pulls the
+latest. Env overrides: `AUTOPILOT_REPO` (git url), `AUTOPILOT_DIR` (clone target),
+`CLAUDE_HOME`.
 
 ## Use
 

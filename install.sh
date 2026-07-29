@@ -1,9 +1,32 @@
 #!/usr/bin/env bash
 # Install autopilot into ~/.claude: symlink the skill and put the CLI on PATH.
 # Idempotent. Re-run after pulling updates.
+#
+# From a checkout:   ./install.sh
+# Over the network:  curl -fsSL <raw-url>/install.sh | bash
+#                    (clones the repo to $AUTOPILOT_DIR, then links from there)
+#
+# Env overrides: AUTOPILOT_REPO (git url) · AUTOPILOT_DIR (clone target) · CLAUDE_HOME
 set -euo pipefail
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+REPO_URL="${AUTOPILOT_REPO:-https://github.com/tsiresymila/autopilot.git}"
+INSTALL_DIR="${AUTOPILOT_DIR:-$HOME/.local/share/autopilot}"
 CLAUDE="${CLAUDE_HOME:-$HOME/.claude}"
+
+# Source of truth: the local checkout if we are inside one, else clone/update it.
+# When piped through `bash`, BASH_SOURCE is not a real path, so skill/ won't be found.
+self_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-/nonexistent}")" 2>/dev/null && pwd || true)"
+if [ -n "$self_dir" ] && [ -f "$self_dir/skill/SKILL.md" ]; then
+  HERE="$self_dir"
+else
+  command -v git >/dev/null 2>&1 || { echo "autopilot: git is required for a network install" >&2; exit 1; }
+  if [ -d "$INSTALL_DIR/.git" ]; then
+    echo "updating $INSTALL_DIR"; git -C "$INSTALL_DIR" pull --ff-only -q || true
+  else
+    echo "cloning $REPO_URL → $INSTALL_DIR"; git clone -q "$REPO_URL" "$INSTALL_DIR"
+  fi
+  HERE="$INSTALL_DIR"
+fi
 
 mkdir -p "$CLAUDE/skills" "$CLAUDE/agents" "$HOME/.local/bin"
 
