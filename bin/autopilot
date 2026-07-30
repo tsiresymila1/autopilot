@@ -304,8 +304,9 @@ EOF
 ## Boundaries
 <!-- module isolation, what may import what, layering rules, public vs internal -->
 
-## Never
-<!-- things autopilot must never do in THIS project (extra to the built-in never-do list) -->
+<!-- Project "never do" constraints live in docs/autopilot/requirements.md
+     (## Constraints), the committed source of truth autopilot reads and passes
+     to every builder. Keep this file about how to code. -->
 EOF
       echo "  ✓ scaffolded CLAUDE.md"
     fi

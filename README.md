@@ -146,9 +146,9 @@ autopilot supervise "build the app"
 
 | File | You put | Who reads it |
 |---|---|---|
-| `CLAUDE.md` | stack, conventions, boundaries, project-specific never-do — **how to build** | every subagent, automatically |
+| `CLAUDE.md` | stack, conventions, boundaries — **how to build** | every subagent, automatically |
 | `docs/autopilot/architecture.md` | module layout, boundaries, wiring, data flow | autopilot, Phase 1 |
-| `docs/autopilot/requirements.md` | product behaviour, API contracts, security/data rules, roles | autopilot, Phase 1 |
+| `docs/autopilot/requirements.md` | product behaviour, API contracts, security/data rules, roles, **`## Constraints` (project never-do)** | autopilot, Phase 1 |
 | `docs/autopilot/backlog.md` | *(optional)* the exact task sequence you want | autopilot, Phase 1 |
 | `.autopilot.env` | lang, model, notifier | the CLI |
 
@@ -156,6 +156,11 @@ A **filled** doc is authoritative: autopilot obeys it and only *extends* it — 
 overwrites your decisions. An **empty** one it drafts itself in Phase 1. `autopilot doctor`
 reports whether `CLAUDE.md` and the quad are present and suggests `init` when they aren't.
 Priority: `CLAUDE.md` (how) → the quad (what) → the goal.
+
+**Project "never do" rules** live in `requirements.md`'s `## Constraints` section — the
+committed source of truth. autopilot reads them in Phase 1 and passes them to every builder
+alongside its built-in never-do list (no `git push`/`rebase`/`rm -rf`/secrets…), refusing
+or parking any task that would violate one.
 
 ## Durable docs — the committed source of truth
 

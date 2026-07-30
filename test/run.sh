@@ -262,6 +262,8 @@ mkdir -p "$TMP/init"; cd "$TMP/init"; git init -q
   assert_contains "$out" "scaffolded architecture.md" "init scaffolds the quad"
   grep -q '^## Boundaries' CLAUDE.md && ok "CLAUDE.md has editable rule sections" || no "CLAUDE.md missing sections"
   grep -q '^## Module layout' docs/autopilot/architecture.md && ok "quad carries fillable prompts" || no "no fill prompts"
+  grep -q '^## Constraints' docs/autopilot/requirements.md && ok "project never-do lives in requirements.md (## Constraints)" || no "no Constraints section"
+  ! grep -q '^## Never' CLAUDE.md && ok "CLAUDE.md defers constraints to the quad (no duplicate Never)" || no "CLAUDE.md still owns Never"
   [ -s .autopilot.env ] && ok "init scaffolds .autopilot.env" || no ".autopilot.env not created"
   grep -q '^\.autopilot/' .gitignore && ok "init gitignores the workspace" || no "gitignore not updated"
   # idempotent: a human's filled instructions survive a re-init

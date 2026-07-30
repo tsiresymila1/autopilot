@@ -18,7 +18,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOCS=(requirements architecture backlog test-strategy)
 
 ap_doc_owns() { case "$1" in
-  requirements)  echo "product behaviour, user-visible requirements, API contracts, security/data rules, roles, permissions, external contracts" ;;
+  requirements)  echo "product behaviour, user-visible requirements, API contracts, security/data rules, roles, permissions, external contracts, and the project's hard constraints (never-do)" ;;
   architecture)  echo "stable module layout, runtime ownership, provider wiring, service boundaries, data-flow shape, top-level file/folder responsibility" ;;
   backlog)       echo "sequencing, exact implementation tasks, per-task mechanics, remaining gaps, future task intent" ;;
   test-strategy) echo "coverage classes, risk scenarios, expected checks, verification gaps" ;;
@@ -40,7 +40,7 @@ case "$cmd" in
         echo "     autopilot builds to. One fact, one owner — keep other docs' facts out. -->"
         echo
         case "$d" in
-          requirements)  printf '## %s\n\n' "What the product must do" "User-visible behaviour" "API contracts" "Security / data rules · roles · permissions" ;;
+          requirements)  printf '## %s\n\n' "What the product must do" "User-visible behaviour" "API contracts" "Security / data rules · roles · permissions" "Constraints (never do)" ;;
           architecture)  printf '## %s\n\n' "Module layout" "Boundaries (what may import what)" "Provider / service wiring" "Data flow" ;;
           backlog)       printf '## %s\n\n' "Milestones / sequencing" "Tasks (autopilot derives its queue from this)" "Known gaps" ;;
           test-strategy) printf '## %s\n\n' "What must be tested" "Risk scenarios" "Expected gates per task class" ;;

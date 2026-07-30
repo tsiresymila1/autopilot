@@ -401,11 +401,18 @@ Never build on a base whose gates are red.
 
 ## Never do autonomously
 
-Hitting one → the task becomes `needs-human`, the action is never taken:
+Two layers. **Built-in** (always, every project) — hitting one → the task becomes
+`needs-human`, the action is never taken:
 `git push` · pull request · deploy · `rm -rf` · `git reset --hard` · **`git rebase`
 (any history rewrite, incl. `-i`, squash, `commit --amend` on shared history)** ·
 force push · merging branches · creating accounts · spending money · editing `.env` ·
 rotating or committing a secret.
+
+**Project constraints** — the `## Constraints` section of `docs/autopilot/requirements.md`
+(plus anything in `CLAUDE.md`). Read them in Phase 1 and treat them as binding: pass them
+into every builder prompt alongside the built-in list, and refuse/park any task that would
+violate one, exactly as with the built-in never-do. They are the human's hard limits for
+*this* project.
 
 Commit forward only: one commit per task (or a small batch) with `writer`. Never
 rewrite, reorder, squash, or drop existing commits — a rebase interrupted mid-run
