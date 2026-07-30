@@ -114,6 +114,13 @@ grep -q '^\.autopilot/' .gitignore 2>/dev/null || echo '.autopilot/' >> .gitigno
 
 Create `journal.md` and `inbox.md` with headers. Append, never rewrite.
 
+`.autopilot/status` is the **one required machine contract** — the supervisor and
+`autopilot status` read only it. Even if this repo has its own orchestration
+layout (`.agent/`, `PROGRESS.md`, a roadmap doc) and you keep human-readable
+notes there, you MUST still write `.autopilot/status` and `.autopilot/inbox.md`.
+Following the repo's convention does not replace the contract; a run that skips
+it is invisible and gets relaunched as a no-op until the supervisor gives up.
+
 | `.autopilot/status` | Meaning for the supervisor |
 |---|---|
 | `RUNNING` | In progress — or the session died. Relaunch to resume. |

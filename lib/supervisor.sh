@@ -37,6 +37,14 @@ trap 'rm -f "$LOCK"' EXIT
 STATUS="$(ap_status_file)"; LOGDIR="$(ap_logs_dir)"; mkdir -p "$LOGDIR"
 log() { ap_log "$1" | tee -a "$LOGDIR/supervisor.log"; }
 
+# Scaffold the machine-readable workspace up front so the supervisor contract
+# never depends on the model creating it. The engine may still keep its own
+# human-readable notes (PROGRESS.md, a repo's native layout); this is the
+# status file the supervisor reads and `autopilot status` reports. A fresh run
+# starts RUNNING; a resume keeps whatever status is already on disk.
+mkdir -p "$(ap_tasks_dir)" "$(ap_task_state)"
+[ -f "$STATUS" ] || echo RUNNING > "$STATUS"
+
 wait_for_reset() {
   local out="$1" secs="$RETRY_WAIT" hhmm now target
   hhmm=$(grep -oiE '(resets?|réinitialis[^ ]*|réessayez?)[^0-9]{0,20}([0-9]{1,2})[:h]([0-9]{2})' "$out" 2>/dev/null \

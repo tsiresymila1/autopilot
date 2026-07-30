@@ -304,6 +304,9 @@ mkdir -p "$TMP/stall"; cd "$TMP/stall"
   assert_contains "$out" "stuck" "supervisor detects a stalled no-op loop"
   [ "$code" -eq 4 ] && ok "supervisor exits 4 (stuck), not the relaunch cap" || no "expected exit 4, got $code"
   case "$out" in *"session 10/10"*) no "reached the relaunch cap instead of stopping early";; *) ok "stops early, well before the cap";; esac
+  # the workspace contract must exist even though the stub engine wrote nothing
+  [ "$(cat .autopilot/status 2>/dev/null)" = RUNNING ] && ok "supervisor scaffolds status=RUNNING up front" || no "status not scaffolded"
+  { [ -d .autopilot/tasks ] && [ -d .autopilot/state ]; } && ok "supervisor scaffolds the tasks/state dirs" || no "workspace dirs missing"
 cd "$ROOT"
 
 # --- supervisor: transient 5xx retries fast, not on the 60s generic path ------
