@@ -111,8 +111,11 @@ Then open the workspace:
 ```bash
 mkdir -p .autopilot/state .autopilot/tasks docs/plans
 echo RUNNING > .autopilot/status
-grep -q '^\.autopilot/' .gitignore 2>/dev/null || echo '.autopilot/' >> .gitignore
+grep -q '^\.autopilot/' .gitignore 2>/dev/null || printf '.autopilot/\n.autopilot.env\n' >> .gitignore
 ```
+
+The durable-doc quad under `docs/autopilot/` **is** committed; only the local
+`.autopilot/` workspace and the `.autopilot.env` config are ignored.
 
 Create `journal.md` and `inbox.md` with headers. Append, never rewrite.
 
