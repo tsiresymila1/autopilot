@@ -394,8 +394,15 @@ Never build on a base whose gates are red.
 ## Never do autonomously
 
 Hitting one → the task becomes `needs-human`, the action is never taken:
-`git push` · pull request · deploy · `rm -rf` · `git reset --hard` · force push ·
-creating accounts · spending money · editing `.env` · rotating or committing a secret.
+`git push` · pull request · deploy · `rm -rf` · `git reset --hard` · **`git rebase`
+(any history rewrite, incl. `-i`, squash, `commit --amend` on shared history)** ·
+force push · merging branches · creating accounts · spending money · editing `.env` ·
+rotating or committing a secret.
+
+Commit forward only: one commit per task (or a small batch) with `writer`. Never
+rewrite, reorder, squash, or drop existing commits — a rebase interrupted mid-run
+(quota, OOM, kill) leaves the repo in a detached-HEAD, half-rebased state a human
+must rescue. If history looks messy, say so in the report; do not "clean it up".
 
 ## Resume after interruption
 
