@@ -41,15 +41,26 @@ docs/plans/*.md                plans produced by recon tasks (these ARE committe
 Add `.autopilot/` to `.gitignore`. It is local to the worktree. `autopilot status --json`
 aggregates `state/*` on demand — do not keep a second copy of the state in sync.
 
-**Your workspace is `.autopilot/` and `docs/autopilot/` — nothing else.** If the repo
-already has its own orchestration directory (`.agent/`, `.tasks/`, a `PROGRESS.md`, a
-roadmap doc, an old queue), treat it as **read-only legacy context**: read it to learn
-what was planned or done, then write **your** queue to `.autopilot/tasks/`, state to
-`.autopilot/state/`, reports to `.autopilot/reports/`, and durable docs to
-`docs/autopilot/`. Never create or write files under `.agent/` (or any other native
-orchestration dir). The CLI (`autopilot status/report/inbox/verify/…`) only reads
-`.autopilot/`; work written elsewhere is invisible to it and to the human. Migrate a
-useful legacy queue into `.autopilot/tasks/` rather than appending to the old one.
+**The two locations are fixed. Use these exact files and nothing else.**
+
+`.autopilot/` — the local workspace (gitignored). Exact names, no improvisation:
+`status`, `tasks/NNN-slug.md`, `state/<id>`, `reports/<id>.md`, `journal.md`,
+`inbox.md`, `plan.md`. Write the inbox with `autopilot inbox` and reports with
+`autopilot report` — do **not** hand-create `HUMAN-INBOX.md`, `PLAN-SUMMARY.md`,
+`QUEUE.md`, or any other name. Those are not autopilot files.
+
+`docs/autopilot/` — the **committed durable-doc quad, and ONLY the quad**:
+`requirements.md`, `architecture.md`, `backlog.md`, `test-strategy.md` (+ optional
+`memory.md`). Never put an inbox, a plan, a queue, a summary, or task state here.
+If it is not one of those four docs, it does not belong in `docs/autopilot/`.
+
+**`.agent/` (and any other native orchestration dir — `PROGRESS.md`, an old
+`QUEUE.md`, a legacy `HUMAN-INBOX.md`) is IGNORED COMPLETELY.** Do not read it, do
+not write it, do not migrate from it, do not reference it. Build your task queue
+fresh from the goal and the durable docs. Pretend `.agent/` is not there.
+
+The CLI (`autopilot status/report/inbox/verify/…`) only reads `.autopilot/` and
+`docs/autopilot/`; anything written elsewhere is invisible to it and to the human.
 
 `AUTOPILOT_REVIEWER` selects who reviews: `subagent` (default, same model) or `codex`
 (an independent model — the builder cannot approve its own work). The doctor reports it.
