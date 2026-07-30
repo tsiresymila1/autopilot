@@ -92,14 +92,16 @@ else
 fi
 
 echo
+echo "Project instructions"
+[ -s "$root/CLAUDE.md" ] && pass "CLAUDE.md present (coding rules, read by every subagent)" \
+  || note "no CLAUDE.md — 'autopilot init' scaffolds one to state your stack, conventions, boundaries"
 ddir="$(ap_docs_dir)"; drel="${ddir#$root/}"
-echo "Durable docs ($drel)"
 qmiss=0
 for d in requirements architecture backlog test-strategy; do
   [ -s "$ddir/$d.md" ] || qmiss=$((qmiss+1))
 done
-if [ "$qmiss" -eq 0 ]; then pass "quad present (requirements architecture backlog test-strategy)"
-else note "$qmiss/4 quad docs missing — autopilot generates them in Phase 1 ('autopilot docs init' scaffolds headers)"; fi
+if [ "$qmiss" -eq 0 ]; then pass "durable-doc quad present ($drel)"
+else note "$qmiss/4 quad docs missing ($drel) — 'autopilot init' scaffolds editable templates you fill to dictate the project; else autopilot drafts them in Phase 1"; fi
 
 echo
 if [ "$ptype" = empty ]; then

@@ -15,6 +15,7 @@
 #   autopilot scope <task.md> [ref]    changed files outside the task's Allowed Files
 #   autopilot revert <task.md>         restore only the task's Allowed Files (scoped)
 #   autopilot review <task.md> [ref]   independent JSON verdict (AUTOPILOT_REVIEWER)
+#   autopilot init                     scaffold editable project instructions (CLAUDE.md + quad + config)
 #   autopilot docs [status|init]       the durable-doc quad (committed source of truth)
 #   autopilot logs [what] [-f] [-n N]  tail a log: session (default) | supervisor | gate | journal | ls
 #   autopilot notify "<title>" "<msg>" fire a milestone notification (test the hook)
@@ -43,7 +44,7 @@ LIB="$HERE/lib"
 _ap_conf="$(ap_root 2>/dev/null)/.autopilot.env"
 [ -f "$_ap_conf" ] && { set -a; . "$_ap_conf"; set +a; }
 
-usage() { sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; }
 
 cmd="${1:-help}"; shift 2>/dev/null || true
 
@@ -278,6 +279,49 @@ EOF
   docs)
     # autopilot docs [status|init]  — the durable-doc quad (committed source of truth).
     bash "$LIB/docs.sh" "$@" ;;
+
+  init)
+    # autopilot init  — scaffold the editable project instructions, then let the
+    # user fill them BEFORE running. Never clobbers a file that already has content.
+    root="$(ap_root)"
+    echo "autopilot init — $root"
+    # 1. CLAUDE.md: coding rules every subagent (and Claude Code) reads automatically.
+    cm="$root/CLAUDE.md"
+    if [ -s "$cm" ]; then echo "  • CLAUDE.md exists — kept"
+    else
+      cat > "$cm" <<'EOF'
+# CLAUDE.md — project rules for autopilot & Claude Code
+
+<!-- Edit before running autopilot. Every subagent (builder, reviewer) reads this
+     automatically. Keep it about HOW to build; put WHAT to build in docs/autopilot/. -->
+
+## Stack
+<!-- languages, frameworks, key libraries, package manager, run/build/test commands -->
+
+## Conventions
+<!-- naming, file/folder layout, error handling, formatting, imports -->
+
+## Boundaries
+<!-- module isolation, what may import what, layering rules, public vs internal -->
+
+## Never
+<!-- things autopilot must never do in THIS project (extra to the built-in never-do list) -->
+EOF
+      echo "  ✓ scaffolded CLAUDE.md"
+    fi
+    # 2. the durable-doc quad (what to build): reuse docs init.
+    bash "$LIB/docs.sh" init
+    # 3. per-repo config (once), and ignore the local workspace + config.
+    env="$root/.autopilot.env"; ex="$HERE/.autopilot.env.example"
+    if [ -s "$env" ]; then echo "  • .autopilot.env exists — kept"
+    elif [ -f "$ex" ]; then cp "$ex" "$env"; echo "  ✓ scaffolded .autopilot.env (edit lang/model/notify)"
+    fi
+    gi="$root/.gitignore"
+    grep -q '^\.autopilot/' "$gi" 2>/dev/null || printf '\n# autopilot\n.autopilot/\n.autopilot.env\n' >> "$gi"
+    echo
+    echo "Next: edit CLAUDE.md and docs/autopilot/*.md to dictate the project,"
+    echo "then run:  autopilot supervise \"<your goal>\""
+    echo "autopilot reads them as the source of truth and builds to them." ;;
 
   logs)
     # autopilot logs [what] [-f|-n N]

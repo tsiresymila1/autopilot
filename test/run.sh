@@ -254,6 +254,23 @@ mkdir -p "$TMP/quad"; cd "$TMP/quad"; git init -q
   [ -s documentation/requirements.md ] && ok "AUTOPILOT_DOCS_DIR relocates the quad" || no "override ignored"
 cd "$ROOT"
 
+# --- init: scaffold editable project instructions, idempotent ----------------
+echo "fixture: autopilot init"
+mkdir -p "$TMP/init"; cd "$TMP/init"; git init -q
+  out="$("$AP" init 2>&1)"
+  assert_contains "$out" "scaffolded CLAUDE.md" "init scaffolds CLAUDE.md"
+  assert_contains "$out" "scaffolded architecture.md" "init scaffolds the quad"
+  grep -q '^## Boundaries' CLAUDE.md && ok "CLAUDE.md has editable rule sections" || no "CLAUDE.md missing sections"
+  grep -q '^## Module layout' docs/autopilot/architecture.md && ok "quad carries fillable prompts" || no "no fill prompts"
+  [ -s .autopilot.env ] && ok "init scaffolds .autopilot.env" || no ".autopilot.env not created"
+  grep -q '^\.autopilot/' .gitignore && ok "init gitignores the workspace" || no "gitignore not updated"
+  # idempotent: a human's filled instructions survive a re-init
+  printf '# CLAUDE\nmes regles a moi\n' > CLAUDE.md; echo "MON ARCHI" > docs/autopilot/architecture.md
+  "$AP" init >/dev/null 2>&1
+  grep -q "mes regles a moi" CLAUDE.md && ok "re-init keeps a filled CLAUDE.md" || no "clobbered CLAUDE.md"
+  grep -q "MON ARCHI" docs/autopilot/architecture.md && ok "re-init keeps a filled quad doc" || no "clobbered quad"
+cd "$ROOT"
+
 # --- install.sh into a throwaway HOME: links skill, cli, agents; no clobber ----
 echo "fixture: install.sh"
 FAKE="$TMP/home"; mkdir -p "$FAKE/.claude/agents"

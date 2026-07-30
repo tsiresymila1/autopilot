@@ -182,6 +182,14 @@ they never collide with the project's own `docs/`. Scaffold headers with
 | `docs/autopilot/backlog.md` | sequencing, exact tasks, per-task mechanics, remaining gaps, future intent — **the task list derives from this** |
 | `docs/autopilot/test-strategy.md` | coverage classes, risk scenarios, expected checks, verification gaps |
 
+**A pre-filled quad is a human's spec — obey it, do not overwrite it.** If a human ran
+`autopilot init` and filled `docs/autopilot/architecture.md` / `requirements.md` (or wrote
+`CLAUDE.md`) before this run, those are the **authoritative instructions**: build exactly
+to that architecture and those rules, and only *extend* the docs with what you discover —
+never replace the human's decisions with your own. Read `CLAUDE.md` first (stack,
+conventions, boundaries, project-specific never-do) and treat it as binding for every
+subagent. Only when a quad doc is empty do you draft it in Phase 1.
+
 Rules that keep them trustworthy:
 
 - **One owner per fact.** A fact lives in exactly one doc. Put task ids, slice mechanics

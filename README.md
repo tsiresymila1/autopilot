@@ -131,6 +131,32 @@ first in every case.
 | **Limit the run** | add `--max-tasks 3` — stops after N tasks (status `DONE`). |
 | **Dirty tree, on purpose** | add `--yes` — runs against uncommitted changes (it won't commit your unrelated work). |
 
+## Project instructions — dictate before it builds
+
+Give autopilot your architecture and rules *before* it starts, and it builds to them
+instead of guessing — especially useful for a project from zero.
+
+```bash
+autopilot init          # scaffold editable templates (never clobbers filled files)
+# → edit CLAUDE.md and docs/autopilot/*.md
+autopilot supervise "build the app"
+```
+
+`autopilot init` creates:
+
+| File | You put | Who reads it |
+|---|---|---|
+| `CLAUDE.md` | stack, conventions, boundaries, project-specific never-do — **how to build** | every subagent, automatically |
+| `docs/autopilot/architecture.md` | module layout, boundaries, wiring, data flow | autopilot, Phase 1 |
+| `docs/autopilot/requirements.md` | product behaviour, API contracts, security/data rules, roles | autopilot, Phase 1 |
+| `docs/autopilot/backlog.md` | *(optional)* the exact task sequence you want | autopilot, Phase 1 |
+| `.autopilot.env` | lang, model, notifier | the CLI |
+
+A **filled** doc is authoritative: autopilot obeys it and only *extends* it — it never
+overwrites your decisions. An **empty** one it drafts itself in Phase 1. `autopilot doctor`
+reports whether `CLAUDE.md` and the quad are present and suggests `init` when they aren't.
+Priority: `CLAUDE.md` (how) → the quad (what) → the goal.
+
 ## Durable docs — the committed source of truth
 
 Every run maintains four **committed** docs under `docs/autopilot/`, each owning a distinct

@@ -35,8 +35,17 @@ case "$cmd" in
       if [ -s "$f" ]; then echo "  • $d.md exists — kept"; continue; fi
       title="$(echo "$d" | tr '-' ' ')"
       { echo "# $title"; echo; echo "> Owns: $(ap_doc_owns "$d")."; echo
-        echo "<!-- autopilot maintains this durable doc. Replace stale claims with concise"
-        echo "     current truth. Do not put another doc's facts here. -->"; } > "$f"
+        echo "<!-- Fill this in before running autopilot to DICTATE the project, or leave it"
+        echo "     and autopilot drafts it in Phase 1. Either way it is the source of truth"
+        echo "     autopilot builds to. One fact, one owner — keep other docs' facts out. -->"
+        echo
+        case "$d" in
+          requirements)  printf '## %s\n\n' "What the product must do" "User-visible behaviour" "API contracts" "Security / data rules · roles · permissions" ;;
+          architecture)  printf '## %s\n\n' "Module layout" "Boundaries (what may import what)" "Provider / service wiring" "Data flow" ;;
+          backlog)       printf '## %s\n\n' "Milestones / sequencing" "Tasks (autopilot derives its queue from this)" "Known gaps" ;;
+          test-strategy) printf '## %s\n\n' "What must be tested" "Risk scenarios" "Expected gates per task class" ;;
+        esac
+      } > "$f"
       echo "  ✓ scaffolded $d.md"
     done
     # Optional cross-run memory — not part of the status gate.
