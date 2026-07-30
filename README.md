@@ -167,6 +167,18 @@ autopilot logs journal -f   # decisions and gate results
 autopilot logs -f           # the session log
 ```
 
+By default the session log holds only the engine's final message. `AUTOPILOT_STREAM=1`
+(needs `jq`) logs a live **play-by-play** instead — every assistant reply, tool call
+(`→ Bash: …`), tool result (`← …`), and a final `═══ success · N turns` line — so
+`autopilot logs -f` shows what the engine is doing as it does it.
+
+**Stuck detection.** `supervise` relaunches after a crash, but if a session exits clean
+without moving anything — no new commit, no status change, no task-state change — it counts
+that as a no-op. After `STALL_LIMIT` such sessions (default `2`) it stops with status
+`STUCK` (exit 4) instead of relaunching an identical session to the cap. That happens when
+the engine keeps concluding the same thing (work already done, or a human decision pending)
+without writing a terminal status; the last session output and `.autopilot/inbox.md` say why.
+
 Inside a Claude session, `/autopilot <goal>` runs the skill directly.
 
 **Permissions.** Autonomy needs no prompts: `run`, `resume`, and `supervise` launch Claude

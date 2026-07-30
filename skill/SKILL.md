@@ -309,9 +309,16 @@ Write the matching `.autopilot/status`:
 | Condition | status |
 |---|---|
 | No task left with unmet dependencies and state ≠ done (remaining are `needs-human`) | `DONE` |
+| The goal is **already complete** on inspection (found done on a branch, nothing executable left) — record the situation and any pending human actions in `inbox.md` | `DONE` |
 | `--max-tasks` reached | `DONE` |
 | Gate suite red on the base and `debugger` could not fix | `BLOCKED` |
 | Three tasks `blocked` in a row | `BLOCKED` |
+
+**Always end a session by writing a terminal status.** Never exit while
+`.autopilot/status` still says `RUNNING` because you concluded there was nothing
+to do — the supervisor cannot tell that from a crash and will relaunch an
+identical, wasted session. If the work is already done or only human decisions
+remain, that is `DONE` (with `inbox.md` filled), not `RUNNING`.
 
 Never build on a base whose gates are red.
 

@@ -47,6 +47,24 @@ ap_engine_prompt() {
   fi
 }
 
+# Turn claude's stream-json into readable play-by-play: assistant text, each
+# tool call, each tool result, the final summary — one line each, the noise
+# (hook events, system frames) dropped. Reads stdin, writes lines.
+ap_stream_format() {
+  jq -rj --unbuffered '
+    if .type=="assistant" then
+      (.message.content[]? |
+        if .type=="text" then (.text + "\n")
+        elif .type=="tool_use" then "→ \(.name): \((.input|tostring)[0:120])\n"
+        else empty end)
+    elif .type=="user" then
+      (.message.content[]? | select(.type=="tool_result") |
+        "  ← " + (((.content // "") | if type=="array" then (map(.text // "")|join(" ")) else tostring end)[0:120]) + "\n")
+    elif .type=="result" then
+      "═══ \(.subtype) · \(.num_turns // 0) turns · $\(.total_cost_usd // 0)\n"
+    else empty end' 2>/dev/null
+}
+
 # Run the engine on a prompt file, streaming to stdout. Returns the engine's exit code.
 # ap_engine_exec <prompt-file>
 ap_engine_exec() {
@@ -65,6 +83,13 @@ ap_engine_exec() {
       # Pin the model when asked, so a run is reproducible and can dodge a flaky
       # tier; unset = the claude CLI's own default.
       local -a m=(); [ -n "${AUTOPILOT_CLAUDE_MODEL:-}" ] && m=(--model "$AUTOPILOT_CLAUDE_MODEL")
-      claude -p "$(cat "$pf")" ${m[@]+"${m[@]}"} --permission-mode "${PERMISSION_MODE:-bypassPermissions}" ;;
+      # AUTOPILOT_STREAM=1 (needs jq): log every action live, not just the final
+      # message, so `logs -f` shows what the engine is doing as it does it.
+      if [ -n "${AUTOPILOT_STREAM:-}" ] && command -v jq >/dev/null 2>&1; then
+        claude -p "$(cat "$pf")" ${m[@]+"${m[@]}"} --permission-mode "${PERMISSION_MODE:-bypassPermissions}" \
+          --output-format stream-json --verbose | ap_stream_format
+      else
+        claude -p "$(cat "$pf")" ${m[@]+"${m[@]}"} --permission-mode "${PERMISSION_MODE:-bypassPermissions}"
+      fi ;;
   esac
 }

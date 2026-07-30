@@ -275,6 +275,35 @@ mkdir -p "$TMP/eng"; cd "$TMP/eng"; git init -q
   assert_contains "$(cat "$TMP/eng/claude.args")" "claude-opus-4-8" "pin passes the model id"
   ( . "$ROOT/lib/common.sh"; PATH="$stub:$PATH" ap_engine_exec "$pf" )
   case "$(cat "$TMP/eng/claude.args")" in *--model*) no "--model sent when no pin set";; *) ok "no --model when pin unset";; esac
+  # stream formatter: turn claude stream-json into readable play-by-play lines
+  if command -v jq >/dev/null 2>&1; then
+    sj="$TMP/eng/stream.jsonl"
+    printf '%s\n' \
+      '{"type":"system","subtype":"hook_started"}' \
+      '{"type":"assistant","message":{"content":[{"type":"text","text":"Investigating"},{"type":"tool_use","name":"Bash","input":{"command":"npm test"}}]}}' \
+      '{"type":"user","message":{"content":[{"type":"tool_result","content":[{"type":"text","text":"1548 passing"}]}]}}' \
+      '{"type":"result","subtype":"success","num_turns":3,"total_cost_usd":0.42}' > "$sj"
+    fmt="$( . "$ROOT/lib/common.sh"; ap_stream_format < "$sj" )"
+    assert_contains "$fmt" "Investigating"   "stream formatter shows assistant text"
+    assert_contains "$fmt" "→ Bash"          "stream formatter shows the tool call"
+    assert_contains "$fmt" "← 1548 passing"  "stream formatter shows the tool result"
+    assert_contains "$fmt" "success · 3 turns" "stream formatter shows the final summary"
+    case "$fmt" in *hook_started*) no "stream formatter leaked hook noise";; *) ok "stream formatter drops hook noise";; esac
+  fi
+cd "$ROOT"
+
+# --- supervisor: a no-op session loop is caught, not relaunched to the cap -----
+echo "fixture: supervisor stall detection"
+mkdir -p "$TMP/stall"; cd "$TMP/stall"
+  git init -q; echo x > f; git add -A && git -c user.email=t@t -c user.name=t commit -qm init
+  # a stub engine that exits 0 and changes NOTHING — the pathological no-op run
+  stub="$TMP/stall/bin"; mkdir -p "$stub"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$stub/claude"; chmod +x "$stub/claude"
+  out="$(PATH="$stub:$PATH" STALL_LIMIT=2 MAX_RELAUNCH=10 AUTOPILOT_NTFY_TOPIC="" \
+         bash "$ROOT/lib/supervisor.sh" "do nothing" 2>&1)"; code=$?
+  assert_contains "$out" "stuck" "supervisor detects a stalled no-op loop"
+  [ "$code" -eq 4 ] && ok "supervisor exits 4 (stuck), not the relaunch cap" || no "expected exit 4, got $code"
+  case "$out" in *"session 10/10"*) no "reached the relaunch cap instead of stopping early";; *) ok "stops early, well before the cap";; esac
 cd "$ROOT"
 
 # --- supervisor: transient 5xx retries fast, not on the 60s generic path ------

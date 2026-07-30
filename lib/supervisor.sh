@@ -62,6 +62,20 @@ first task not marked done. Do not start over. Do not re-litigate decisions alre
 
 log "start — engine: $(ap_engine) · goal: $GOAL ${EXTRA:+· options: $EXTRA}"
 
+# A fingerprint of progress: HEAD + status + the task-state dir. If a clean
+# session leaves all three unchanged, it did nothing — the engine keeps
+# concluding the same thing (already done, or waiting on a human) without
+# writing a terminal status. Stop after STALL_LIMIT such no-ops instead of
+# relaunching an identical session to the cap.
+STALL_LIMIT="${STALL_LIMIT:-2}"
+progress_fingerprint() {
+  printf '%s|%s|%s' \
+    "$(git rev-parse HEAD 2>/dev/null || echo none)" \
+    "$(cat "$STATUS" 2>/dev/null)" \
+    "$(ls -1 "$(ap_task_state)" 2>/dev/null | sort | tr '\n' ',')"
+}
+stall=0; last_fp="$(progress_fingerprint)"
+
 for i in $(seq 1 "$MAX_RELAUNCH"); do
   OUT="$LOGDIR/session-$(date +%Y%m%d-%H%M%S).log"
   log "session $i/$MAX_RELAUNCH → $OUT"
@@ -82,7 +96,20 @@ for i in $(seq 1 "$MAX_RELAUNCH"); do
   elif [ "$code" -ne 0 ]; then
     log "⚠️  unexpected failure (code $code) — retry in 60 s"; tail -15 "$OUT"; sleep 60
   else
-    log "session closed without finishing — resuming immediately"
+    # Clean exit, still RUNNING: did it actually move? No change = a no-op.
+    fp="$(progress_fingerprint)"
+    if [ "$fp" = "$last_fp" ]; then
+      stall=$((stall+1))
+      log "session made no change ($stall/$STALL_LIMIT no-op sessions)"
+      if [ "$stall" -ge "$STALL_LIMIT" ]; then
+        log "🛑 stuck — $stall sessions changed nothing. The engine keeps concluding without a terminal status (already done, or a human decision is pending). Stopping. See the last session below and .autopilot/inbox.md."
+        ap_notify "autopilot: STUCK" "$GOAL — no progress in $stall sessions; likely needs a human"
+        tail -40 "$OUT"; exit 4
+      fi
+    else
+      stall=0; last_fp="$fp"
+      log "session closed without finishing — resuming immediately"
+    fi
   fi
 done
 
