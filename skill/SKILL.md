@@ -41,6 +41,16 @@ docs/plans/*.md                plans produced by recon tasks (these ARE committe
 Add `.autopilot/` to `.gitignore`. It is local to the worktree. `autopilot status --json`
 aggregates `state/*` on demand — do not keep a second copy of the state in sync.
 
+**Your workspace is `.autopilot/` and `docs/autopilot/` — nothing else.** If the repo
+already has its own orchestration directory (`.agent/`, `.tasks/`, a `PROGRESS.md`, a
+roadmap doc, an old queue), treat it as **read-only legacy context**: read it to learn
+what was planned or done, then write **your** queue to `.autopilot/tasks/`, state to
+`.autopilot/state/`, reports to `.autopilot/reports/`, and durable docs to
+`docs/autopilot/`. Never create or write files under `.agent/` (or any other native
+orchestration dir). The CLI (`autopilot status/report/inbox/verify/…`) only reads
+`.autopilot/`; work written elsewhere is invisible to it and to the human. Migrate a
+useful legacy queue into `.autopilot/tasks/` rather than appending to the old one.
+
 `AUTOPILOT_REVIEWER` selects who reviews: `subagent` (default, same model) or `codex`
 (an independent model — the builder cannot approve its own work). The doctor reports it.
 
