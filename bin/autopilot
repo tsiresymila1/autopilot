@@ -18,7 +18,8 @@
 #   autopilot update                   pull the latest version and re-link (alias: upgrade)
 #   autopilot help
 #
-# opts forwarded to the skill: --dry-run, --max-tasks N, --yes
+# --print-prompt     show the prompt the engine would receive, start nothing
+# opts forwarded to the skill: --dry-run (plan only), --max-tasks N, --yes
 set -uo pipefail
 # Resolve through symlinks (the installer links this onto PATH) to find the repo.
 src="${BASH_SOURCE[0]}"
@@ -31,7 +32,7 @@ LIB="$HERE/lib"
 # shellcheck source=lib/common.sh
 . "$LIB/common.sh" || { echo "autopilot: cannot load $LIB/common.sh — broken install?" >&2; exit 1; }
 
-usage() { sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; }
 
 cmd="${1:-help}"; shift 2>/dev/null || true
 
@@ -42,15 +43,38 @@ case "$cmd" in
   run|supervise)
     goal="${1:?usage: autopilot $cmd \"<goal or file>\" [opts]}"; shift || true
     # Preflight gate: block only on hard blockers; pass --yes through.
-    yes=""; for a in "$@"; do [ "$a" = "--yes" ] && yes="--yes"; done
-    bash "$LIB/doctor.sh" "$yes" || ap_die "doctor blocked the run — fix the ✗ items above, or pass --yes" 3
+    yes=""; dry=""
+    for a in "$@"; do
+      [ "$a" = "--yes" ]     && yes="--yes"
+      [ "$a" = "--print-prompt" ] && dry=1
+    done
+    # --print-prompt touches nothing, so doctor is advisory: report, never block.
+    bash "$LIB/doctor.sh" "$yes" || [ -n "$dry" ] \
+      || ap_die "doctor blocked the run — fix the ✗ items above, or pass --yes" 3
     if [ "$cmd" = supervise ]; then
       bash "$LIB/supervisor.sh" "$goal" "$@"
     else
       why="$(ap_engine_available)" || ap_die "$why"
       pf="$(mktemp)"; trap 'rm -f "$pf"' EXIT
       ap_engine_prompt "$goal $*" "$pf"
-      ap_engine_exec "$pf"
+      if [ -n "$dry" ]; then
+        echo; echo "--print-prompt — engine NOT started. It would receive:"; echo
+        sed 's/^/  | /' "$pf"
+        echo; echo "Drop --print-prompt to run it for real."; exit 0
+      fi
+      # The engine is headless: it prints nothing until it exits. Say so, and
+      # log the session so `autopilot logs -f` works for run, not just supervise.
+      out="$(ap_logs_dir)/session-$(date +%Y%m%d-%H%M%S).log"; mkdir -p "$(dirname "$out")"
+      cat <<EOF
+
+engine: $(ap_engine) — headless. It prints NOTHING until the whole run ends.
+Follow it from another terminal, in this repo:
+  autopilot status            task states as they land
+  autopilot logs journal -f   decisions and gate results
+  autopilot logs -f           this session log
+
+EOF
+      ap_engine_exec "$pf" 2>&1 | tee "$out"
     fi ;;
 
   resume)

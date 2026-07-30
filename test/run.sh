@@ -255,6 +255,12 @@ mkdir -p "$TMP/eng"; cd "$TMP/eng"; git init -q
   [ "$code" -ne 0 ] && ok "run exits non-zero on an unknown engine" || no "expected non-zero"
   # doctor names the active engine
   assert_contains "$("$AP" doctor 2>&1)" "engine:" "doctor reports the active engine"
+  # --dry-run shows the prompt and starts nothing (no session log, no state)
+  out="$("$AP" run "phase 6" --print-prompt 2>&1)"; code=$?
+  [ "$code" -eq 0 ] && ok "--print-prompt exits 0" || no "--print-prompt exited $code"
+  assert_contains "$out" "engine NOT started"  "--print-prompt says it started nothing"
+  assert_contains "$out" "/autopilot phase 6"  "--print-prompt prints the engine prompt"
+  [ -z "$(ls .autopilot/logs 2>/dev/null)" ] && ok "--print-prompt writes no session log" || no "session log written"
 cd "$ROOT"
 
 # --- notifications -----------------------------------------------------------

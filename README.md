@@ -111,6 +111,7 @@ first in every case.
 | **A new feature** | `autopilot run "implement F-101: password reset"` — scoped to that feature's files via `## Allowed Files`. |
 | **A bug / debug** | `autopilot run "fix: uploads over 5MB return 500"` — the gate is a failing test that must go green; the `debugger` subagent is spawned when the cause is unclear. |
 | **Just plan, don't build** | add `--dry-run` — stops after Phase 1 and shows the queue. |
+| **See what would be sent** | add `--print-prompt` — prints the engine prompt and exits; nothing runs. |
 | **Limit the run** | add `--max-tasks 3` — stops after N tasks (status `DONE`). |
 | **Dirty tree, on purpose** | add `--yes` — runs against uncommitted changes (it won't commit your unrelated work). |
 
@@ -153,6 +154,18 @@ skill reviews in-session. Borrowed from the dual-model orchestrator; optional, s
 autopilot still runs single-model out of the box.
 
 Forwarded to the skill: `--dry-run`, `--max-tasks N`, `--yes`.
+`--print-prompt` is handled by the CLI itself: it shows the prompt the engine would
+receive and starts nothing (doctor still reports, but cannot block).
+
+**The engine is headless.** `claude -p` prints nothing until the session ends, so a long
+`run` shows an empty terminal for minutes — it is working, not hung. `run` now says so and
+tees the session to `.autopilot/logs/session-<ts>.log`. Watch it from a second terminal:
+
+```bash
+autopilot status            # task states as they land
+autopilot logs journal -f   # decisions and gate results
+autopilot logs -f           # the session log
+```
 
 Inside a Claude session, `/autopilot <goal>` runs the skill directly.
 
