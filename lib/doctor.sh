@@ -72,6 +72,9 @@ if why="$(ap_engine_available)"; then pass "engine: $(ap_engine) (ready)"
 else note "engine $(ap_engine) unusable — $why"; fi
 [ "$(ap_engine)" = claude ] && command -v codex >/dev/null 2>&1 \
   && say '·' "codex also available — AUTOPILOT_ENGINE=codex runs the skill on it"
+say '·' "output language: ${AUTOPILOT_LANG:-en} (reports/inbox/summary) — set AUTOPILOT_LANG or --lang"
+[ -f "$root/.autopilot.env" ] && pass "per-repo config loaded (.autopilot.env)" \
+  || say '·' "no .autopilot.env — copy .autopilot.env.example to set options once"
 if [ -n "${AUTOPILOT_NTFY_TOPIC:-}" ]; then pass "notifications via ntfy (${AUTOPILOT_NTFY_SERVER:-https://ntfy.sh}/$AUTOPILOT_NTFY_TOPIC)"
 elif [ -n "${AUTOPILOT_NOTIFY:-}" ]; then pass "notifications via AUTOPILOT_NOTIFY hook"
 elif command -v osascript >/dev/null 2>&1; then pass "notifications via osascript (macOS, local only)"

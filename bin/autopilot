@@ -22,7 +22,9 @@
 #   autopilot help
 #
 # --print-prompt     show the prompt the engine would receive, start nothing
+# --lang <code>      language for reports/inbox/summary (e.g. fr) — or AUTOPILOT_LANG
 # opts forwarded to the skill: --dry-run (plan only), --max-tasks N, --yes
+# per-repo config: .autopilot.env at the repo root (set AUTOPILOT_* once)
 set -uo pipefail
 # Resolve through symlinks (the installer links this onto PATH) to find the repo.
 src="${BASH_SOURCE[0]}"
@@ -35,6 +37,12 @@ LIB="$HERE/lib"
 # shellcheck source=lib/common.sh
 . "$LIB/common.sh" || { echo "autopilot: cannot load $LIB/common.sh — broken install?" >&2; exit 1; }
 
+# Per-repo config: set your AUTOPILOT_* options once in .autopilot.env at the repo
+# root instead of prefixing every command. Use `: "${VAR:=value}"` lines so an
+# inline env var still wins for a one-off. See .autopilot.env.example.
+_ap_conf="$(ap_root 2>/dev/null)/.autopilot.env"
+[ -f "$_ap_conf" ] && { set -a; . "$_ap_conf"; set +a; }
+
 usage() { sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'; }
 
 cmd="${1:-help}"; shift 2>/dev/null || true
@@ -46,12 +54,16 @@ case "$cmd" in
   run|supervise)
     goal="${1:?usage: autopilot $cmd \"<goal or file>\" [opts]}"; shift || true
     # Preflight gate: block only on hard blockers; pass --yes through.
-    # --print-prompt is CLI-only; every other flag is forwarded to the skill.
+    # --print-prompt and --lang are CLI-only; every other flag reaches the skill.
     yes=""; dry=""; fargs=()
-    for a in "$@"; do
-      [ "$a" = "--yes" ]          && yes="--yes"
-      [ "$a" = "--print-prompt" ] && { dry=1; continue; }
-      fargs+=("$a")
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --yes)          yes="--yes"; fargs+=("$1") ;;
+        --print-prompt) dry=1 ;;
+        --lang)         export AUTOPILOT_LANG="${2:?--lang needs a value (e.g. fr)}"; shift ;;
+        *)              fargs+=("$1") ;;
+      esac
+      shift
     done
     # --print-prompt touches nothing, so doctor is advisory: report, never block.
     bash "$LIB/doctor.sh" "$yes" || [ -n "$dry" ] \

@@ -28,6 +28,14 @@ ap_engine_available() {
 
 # Write the engine's prompt for <goal> into <file>.
 # Claude: a one-line skill invocation. Codex: the whole skill + the goal.
+# A directive appended to every prompt when AUTOPILOT_LANG is set: the engine
+# writes all human-facing prose in that language. The CLI already localizes the
+# fixed labels; this covers the prose the model itself writes.
+_ap_lang_directive() {
+  local lang="${AUTOPILOT_LANG:-}"; [ -n "$lang" ] || return 0
+  printf 'Language: write ALL human-facing text — reports (--did/--why/--how), inbox items, journal entries, and your final summary — in %s.\n' "$lang"
+}
+
 ap_engine_prompt() {
   local goal="$1" out="$2"
   if [ "$(ap_engine)" = codex ]; then
@@ -41,9 +49,11 @@ ap_engine_prompt() {
         "  independent verdict. Never approve work you did not verify." \
         "- Use the autopilot CLI for the checkable steps: gate-lint, gate, scope," \
         "  verify, revert, docs, status. They are the objective truth, not prose."
+      d="$(_ap_lang_directive)"; [ -n "$d" ] && printf '%s\n' "" "$d"
     } > "$out"
   else
-    printf '/autopilot %s\n' "$goal" > "$out"
+    { printf '/autopilot %s\n' "$goal"
+      d="$(_ap_lang_directive)"; [ -n "$d" ] && printf '%s\n' "$d"; } > "$out"
   fi
 }
 

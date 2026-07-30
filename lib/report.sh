@@ -3,8 +3,34 @@
 # action item. Both enforce a fixed structure so every task leaves the same
 # readable trail — what was done, how, why — and every human item says exactly
 # what to do and why. Sourced, never executed. Depends on paths.sh + gate.sh.
+#
+# AUTOPILOT_LANG picks the label language (en | fr; default en). Unknown values
+# fall back to English labels — the engine still writes the *prose* in whatever
+# language you asked for (it is told to, in the engine prompt).
 
 set -uo pipefail
+
+ap_lang() { echo "${AUTOPILOT_LANG:-en}"; }
+
+# _ap_label <key> — localized section label. One place to add a language.
+_ap_label() {
+  case "$(ap_lang)" in
+    fr) case "$1" in
+          state) echo "état";; gate) echo "gate";; commit) echo "commit";; files) echo "fichiers";;
+          did) echo "Ce qui a été fait";; how) echo "Comment";; why) echo "Pourquoi";; notes) echo "Notes";;
+          logged) echo "consigné le";;
+          todo) echo "À faire";; iwhy) echo "Pourquoi";; ihow) echo "Comment";; unblocks) echo "Débloque";;
+          inbox_title) echo "Boîte autopilot — actions en attente d'un humain";;
+        esac ;;
+    *)  case "$1" in
+          state) echo "state";; gate) echo "gate";; commit) echo "commit";; files) echo "files";;
+          did) echo "What was done";; how) echo "How";; why) echo "Why";; notes) echo "Notes";;
+          logged) echo "logged";;
+          todo) echo "What to do";; iwhy) echo "Why";; ihow) echo "How";; unblocks) echo "Unblocks";;
+          inbox_title) echo "Autopilot inbox — actions waiting on a human";;
+        esac ;;
+  esac
+}
 
 # ap_report <task-file> <state> <did> <why> [how] [notes]
 # Writes .autopilot/reports/<id>.md and appends a line to reports/INDEX.md.
@@ -20,15 +46,15 @@ ap_report() {
   dir="$(ap_state_dir)/reports"; mkdir -p "$dir"; f="$dir/$id.md"
   {
     printf '# %s — %s\n\n' "$id" "$title"
-    printf -- '- **state:** %s\n' "$state"
-    printf -- '- **gate:** `%s`\n' "${gate:-—}"
-    printf -- '- **commit:** %s\n' "$commit"
-    printf -- '- **files:** %s\n\n' "${files:-—}"
-    printf '## What was done\n%s\n\n' "$did"
-    printf '## How\n%s\n\n' "${how:-—}"
-    printf '## Why\n%s\n\n' "$why"
-    [ -n "$notes" ] && printf '## Notes\n%s\n\n' "$notes"
-    printf '_logged %s_\n' "$(date '+%Y-%m-%d %H:%M')"
+    printf -- '- **%s:** %s\n' "$(_ap_label state)" "$state"
+    printf -- '- **%s:** `%s`\n' "$(_ap_label gate)" "${gate:-—}"
+    printf -- '- **%s:** %s\n' "$(_ap_label commit)" "$commit"
+    printf -- '- **%s:** %s\n\n' "$(_ap_label files)" "${files:-—}"
+    printf '## %s\n%s\n\n' "$(_ap_label did)" "$did"
+    printf '## %s\n%s\n\n' "$(_ap_label how)" "${how:-—}"
+    printf '## %s\n%s\n\n' "$(_ap_label why)" "$why"
+    [ -n "$notes" ] && printf '## %s\n%s\n\n' "$(_ap_label notes)" "$notes"
+    printf '_%s %s_\n' "$(_ap_label logged)" "$(date '+%Y-%m-%d %H:%M')"
   } > "$f"
   printf -- '- [%s] %s — %s → reports/%s.md\n' "$state" "$id" "$title" "$id" >> "$dir/INDEX.md"
   echo "$f"
@@ -43,13 +69,13 @@ ap_inbox_action() {
   id="$(ap_id_of "$task")"
   title="$(sed -n '1s/^#[[:space:]]*//p' "$task")"; [ -n "$title" ] || title="$id"
   inbox="$(ap_inbox)"; mkdir -p "$(dirname "$inbox")"
-  [ -s "$inbox" ] || printf '# Autopilot inbox — actions waiting on a human\n' > "$inbox"
+  [ -s "$inbox" ] || printf '# %s\n' "$(_ap_label inbox_title)" > "$inbox"
   {
     printf '\n### %s %s (%s)\n' "$icon" "$title" "$id"
-    printf '**What to do:** %s\n\n' "$action"
-    printf '**Why:** %s\n\n' "$why"
-    [ -n "$how" ]      && printf '**How:**\n%s\n\n' "$how"
-    [ -n "$unblocks" ] && printf '**Unblocks:** %s\n\n' "$unblocks"
-    printf '_logged %s_\n' "$(date '+%Y-%m-%d %H:%M')"
+    printf '**%s:** %s\n\n' "$(_ap_label todo)" "$action"
+    printf '**%s:** %s\n\n' "$(_ap_label iwhy)" "$why"
+    [ -n "$how" ]      && printf '**%s:**\n%s\n\n' "$(_ap_label ihow)" "$how"
+    [ -n "$unblocks" ] && printf '**%s:** %s\n\n' "$(_ap_label unblocks)" "$unblocks"
+    printf '_%s %s_\n' "$(_ap_label logged)" "$(date '+%Y-%m-%d %H:%M')"
   } >> "$inbox"
 }

@@ -8,6 +8,19 @@ is genuinely done. No gate, no "done". The gate proves completion; a reviewer su
 judges quality on top. The engine never stops to ask — it decides, logs the decision,
 parks human-only matters in an inbox, and keeps going.
 
+## Quick start
+
+```bash
+cd your-repo
+autopilot doctor                       # is it ready? what status?
+autopilot supervise "add CSV export to the reports page"
+```
+
+That's the whole loop: `supervise` keeps a session running (relaunching across quota
+resets and transient errors) until it reaches `DONE`, `BLOCKED`, or `STUCK`, and pings you.
+Watch it live from a second terminal with `autopilot logs -f`. Prefer to set your options
+once? Drop an `.autopilot.env` at the repo root (see [Ease of use](#ease-of-use)).
+
 ## Install
 
 Over the network (clones the repo, then links):
@@ -47,6 +60,9 @@ autopilot supervise "<goal>"        # relaunch across quota resets until DONE/BL
 autopilot resume                    # resume the run in this repo
 autopilot status [--json]           # per-task table + counts
 autopilot verify <task.md> [ref]    # two-tier proof: scope + task gate + repo gate
+autopilot needs-verify <task.md>    # documented gate bypass → needs-verification + notify
+autopilot report <task.md> --state S --did .. --why ..   # per-task report (what/how/why)
+autopilot inbox  <task.md> --do .. --why ..              # clear human item (+ notify)
 autopilot gate <task.md> [--repo]   # run the task gate (or the repo-wide gate)
 autopilot gate-lint <task.md>       # reject a weak / cheatable gate
 autopilot scope <task.md> [ref]     # changed files outside the task's ## Allowed Files
@@ -162,6 +178,35 @@ Both refuse empty required fields (`--did/--why`, `--do/--why`), so a report is 
 placeholder. The skill calls `report` after every task and `inbox` for every blocked /
 needs-human item. `.autopilot/reports/INDEX.md` lists them all; `autopilot status` points
 at the reports dir and the inbox.
+
+### Output language
+
+Reports, inbox items, and the run summary come out in the language you pick:
+
+```bash
+autopilot supervise "<goal>" --lang fr     # or: export AUTOPILOT_LANG=fr
+```
+
+The fixed labels are localized (`## Ce qui a été fait`, `**À faire:**` for `fr`; English is
+the default and the fallback for other codes), and the engine is told to write all of its
+prose — reports, inbox, journal, summary — in that language too.
+
+## Ease of use
+
+Set your options once per repo in `.autopilot.env` at the repo root, instead of prefixing
+every command. The CLI sources it automatically; an inline env var still wins for a one-off.
+
+```bash
+# .autopilot.env  (copy from .autopilot.env.example)
+: "${AUTOPILOT_LANG:=fr}"
+: "${AUTOPILOT_CLAUDE_MODEL:=claude-opus-4-8}"
+: "${AUTOPILOT_STREAM:=1}"
+# : "${AUTOPILOT_NTFY_TOPIC:=my-topic-abc123}"
+```
+
+Then the everyday command is just `autopilot supervise "<goal>"` — model pinned, French
+output, live play-by-play, all without a long env prefix. `autopilot doctor` shows the
+active language and whether a config file was loaded.
 
 ## When the gate can't prove it — documented bypass
 

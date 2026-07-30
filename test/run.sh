@@ -164,6 +164,28 @@ mkdir -p "$TMP/rep"; cd "$TMP/rep"
   assert_contains "$ib" "Unblocks:** tsc root cause"          "inbox states what it unblocks"
 cd "$ROOT"
 
+# --- output language: fr labels, --lang flag, per-repo config, inline override -
+echo "fixture: output language"
+mkdir -p "$TMP/lang"; cd "$TMP/lang"
+  git init -q; echo x > f; git add -A && git -c user.email=t@t -c user.name=t commit -qm init
+  printf '# 7 — Conversion\n- **id**: p6-042\n- **gate**: `npm test`\n## Allowed Files\n- src/d.tsx\n' > lt.md
+  # fr labels in the report + inbox
+  AUTOPILOT_LANG=fr "$AP" report lt.md --state done --did "fait" --why "raison" >/dev/null 2>&1
+  assert_contains "$(cat .autopilot/reports/p6-042.md 2>/dev/null)" "## Ce qui a été fait" "report uses fr labels under AUTOPILOT_LANG=fr"
+  AUTOPILOT_NTFY_TOPIC="" AUTOPILOT_LANG=fr "$AP" inbox lt.md --do "merger" --why "prête" >/dev/null 2>&1
+  assert_contains "$(cat .autopilot/inbox.md 2>/dev/null)" "**À faire:**" "inbox uses fr labels under AUTOPILOT_LANG=fr"
+  # --lang injects a language directive into the engine prompt
+  out="$("$AP" run "faire X" --lang de --print-prompt 2>&1)"
+  assert_contains "$out" "in de." "--lang adds a language directive to the prompt"
+  goal_line="$(printf '%s\n' "$out" | grep '/autopilot')"
+  case "$goal_line" in *"--lang"*) no "--lang leaked into the goal";; *) ok "--lang is stripped from the goal";; esac
+  # per-repo config sets it; an inline env still wins thanks to the := form
+  printf ': "${AUTOPILOT_LANG:=fr}"\n' > .autopilot.env
+  assert_contains "$("$AP" doctor 2>&1)"                    "output language: fr" "config .autopilot.env sets the language"
+  assert_contains "$(AUTOPILOT_LANG=en "$AP" doctor 2>&1)"  "output language: en" "inline env overrides the config file"
+  assert_contains "$("$AP" doctor 2>&1)" "per-repo config loaded" "doctor reports the loaded config"
+cd "$ROOT"
+
 # --- independent reviewer: backend dispatch + JSON validation ----------------
 echo "fixture: reviewer backend"
 mkdir -p "$TMP/rev"; cd "$TMP/rev"
