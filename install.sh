@@ -30,6 +30,10 @@ fi
 
 mkdir -p "$CLAUDE/skills" "$CLAUDE/agents" "$HOME/.local/bin"
 
+# Remove any existing target first: `ln -sfn src dir/` nests the link INSIDE an
+# existing directory instead of replacing it, which silently leaves a stale
+# copied SKILL.md in place and the engine keeps reading the old skill.
+[ -L "$CLAUDE/skills/autopilot" ] || rm -rf "$CLAUDE/skills/autopilot"
 ln -sfn "$HERE/skill"      "$CLAUDE/skills/autopilot"
 ln -sfn "$HERE/bin/autopilot" "$HOME/.local/bin/autopilot"
 

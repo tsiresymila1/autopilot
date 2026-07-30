@@ -260,6 +260,11 @@ FAKE="$TMP/home"; mkdir -p "$FAKE/.claude/agents"
 echo "MY OWN builder" > "$FAKE/.claude/agents/builder.md"   # pre-existing user file
 out="$(HOME="$FAKE" AUTOPILOT_SKIP_EXTRAS=1 bash "$ROOT/install.sh" 2>&1)"
 [ -L "$FAKE/.claude/skills/autopilot" ] && ok "install links the skill" || no "skill not linked"
+# a STALE dir target (old copied SKILL.md) must be replaced by the symlink, not nested into
+STALE="$TMP/stale"; mkdir -p "$STALE/.claude/skills/autopilot"; echo "OLD" > "$STALE/.claude/skills/autopilot/SKILL.md"
+HOME="$STALE" AUTOPILOT_SKIP_EXTRAS=1 bash "$ROOT/install.sh" >/dev/null 2>&1
+{ [ -L "$STALE/.claude/skills/autopilot" ] && [ "$(readlink "$STALE/.claude/skills/autopilot")" = "$ROOT/skill" ]; } \
+  && ok "install replaces a stale skill dir with the live symlink" || no "stale skill dir not replaced (ln nested inside)"
 [ -L "$FAKE/.local/bin/autopilot" ]     && ok "install links the CLI"   || no "cli not linked"
 [ -L "$FAKE/.claude/agents/reviewer.md" ] && ok "install links a fresh agent" || no "agent not linked"
 grep -q "MY OWN builder" "$FAKE/.claude/agents/builder.md" && ok "install never clobbers an existing agent" || no "clobbered user agent"
