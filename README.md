@@ -137,6 +137,22 @@ reviewer enforces it. `autopilot docs status` must be green before execution;
 `autopilot docs init` scaffolds the ownership headers (never overwriting a filled doc, and
 never touching the project's own `docs/`).
 
+## When the gate can't prove it — documented bypass
+
+Some work is done in code but its real gate can't run here: it needs a live app, an
+e2e/browser run, a test account, or a human's eyes. Autopilot never fakes a green gate
+and never silently drops the work. The task adds a `## Manual Verification` section (what
+a human must check, and the expected result), and:
+
+```bash
+autopilot needs-verify <task.md>
+```
+
+refuses unless that section exists, marks the task `needs-verification`, appends the steps
+to `.autopilot/inbox.md`, and fires a notification. `autopilot status` counts it (`⚠`)
+separately from `done`. This is only for a gate that *genuinely cannot* run — a
+runnable-but-red gate is `blocked`, not bypassed.
+
 ## Independent review — the builder can't approve itself
 
 `AUTOPILOT_REVIEWER` picks who reviews the diff:

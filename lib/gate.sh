@@ -25,6 +25,14 @@ ap_allowed_paths() {
     | grep -v '^$'
 }
 
+# Echo the body of the task's "## Manual Verification" section verbatim (the lines
+# a human must check when the automated gate cannot prove completion headless).
+# Empty when the section is absent — which is what forbids a silent bypass.
+ap_manual_steps() {
+  awk '/^##[[:space:]]+Manual Verification/{f=1;next} /^##[[:space:]]/{f=0} f' "$1" \
+    | sed -e 's/[[:space:]]*$//' | grep -v '^$'
+}
+
 # Return 0 if the gate is too weak to prove completion (cheatable / trivially true).
 # A weak gate is the one failure mode the whole design must not allow.
 ap_gate_weak() {

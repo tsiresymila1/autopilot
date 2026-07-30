@@ -7,6 +7,7 @@
 #   autopilot resume                   resume the run in this repo
 #   autopilot status [--json]          aggregate task states from .autopilot/state
 #   autopilot verify <task.md> [ref]   two-tier proof: scope + task gate + repo gate
+#   autopilot needs-verify <task.md>   documented gate bypass → needs-verification + notify
 #   autopilot gate <task.md> [--repo]  run the task gate (or the repo-wide gate)
 #   autopilot gate-lint <task.md>      reject a weak/cheatable gate
 #   autopilot scope <task.md> [ref]    changed files outside the task's Allowed Files
@@ -32,7 +33,7 @@ LIB="$HERE/lib"
 # shellcheck source=lib/common.sh
 . "$LIB/common.sh" || { echo "autopilot: cannot load $LIB/common.sh — broken install?" >&2; exit 1; }
 
-usage() { sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; }
 
 cmd="${1:-help}"; shift 2>/dev/null || true
 
@@ -91,8 +92,8 @@ EOF
     sd="$(ap_task_state)"; qd="$(ap_tasks_dir)"
     st="$(cat "$(ap_status_file)" 2>/dev/null || echo NONE)"
     json="${1:-}"
-    done=0; blocked=0; human=0; todo=0; rows=""; jtasks=""
-    icon() { case "$1" in done) echo "✓";; blocked) echo "✗";; needs-human) echo "⚑";; *) echo "·";; esac; }
+    done=0; blocked=0; human=0; verify=0; todo=0; rows=""; jtasks=""
+    icon() { case "$1" in done) echo "✓";; blocked) echo "✗";; needs-human) echo "⚑";; needs-verification) echo "⚠";; *) echo "·";; esac; }
     if [ -d "$qd" ]; then
       for f in "$qd"/*.md; do
         [ -e "$f" ] || continue
@@ -105,18 +106,19 @@ EOF
           [ -n "$key" ] && [ -f "$sd/$key" ] && { tstate="$(cat "$sd/$key")"; break; }
         done
         case "$tstate" in done) done=$((done+1));; blocked) blocked=$((blocked+1));;
-          needs-human) human=$((human+1));; *) todo=$((todo+1)); tstate="todo";; esac
+          needs-human) human=$((human+1));; needs-verification) verify=$((verify+1));;
+          *) todo=$((todo+1)); tstate="todo";; esac
         rows="$rows$(printf '  %s  %-11s %s' "$(icon "$tstate")" "$tstate" "$title")
 "
         jtasks="$jtasks,{\"id\":\"$id\",\"state\":\"$tstate\",\"title\":\"${title//\"/\'}\",\"gate\":\"${gate//\"/\'}\"}"
       done
     fi
     if [ "$json" = "--json" ]; then
-      printf '{"status":"%s","done":%d,"blocked":%d,"needs_human":%d,"todo":%d,"tasks":[%s]}\n' \
-        "$st" "$done" "$blocked" "$human" "$todo" "${jtasks#,}"
+      printf '{"status":"%s","done":%d,"blocked":%d,"needs_human":%d,"needs_verification":%d,"todo":%d,"tasks":[%s]}\n' \
+        "$st" "$done" "$blocked" "$human" "$verify" "$todo" "${jtasks#,}"
     else
       echo "run status: $st"
-      echo "$done done · $blocked blocked · $human needs-human · $todo todo"
+      echo "$done done · $blocked blocked · $human needs-human · $verify needs-verification · $todo todo"
       [ -n "$rows" ] && { echo; printf '%s' "$rows"; }
       [ -f "$(ap_inbox)" ] && { echo; echo "human inbox: $(ap_inbox)"; }
       true
@@ -176,6 +178,28 @@ EOF
     fi
     [ "$fail" -eq 0 ] && { echo "verify PASS"; exit 0; } || { echo "verify FAIL"; exit 2; }
     ;;
+
+  needs-verify)
+    # autopilot needs-verify <task-file.md>  — documented gate bypass.
+    # Use ONLY when the automated gate genuinely cannot prove completion here
+    # (needs a live app, e2e, a test account, or a human's eyes). It refuses
+    # unless the task documents a "## Manual Verification" section, records the
+    # steps to .autopilot/inbox.md as needs-human, and fires a notification —
+    # so the work is never silently accepted, always surfaced for a human.
+    task="${1:?usage: autopilot needs-verify <task-file.md>}"; [ -f "$task" ] || ap_die "no such task file: $task"
+    steps="$(ap_manual_steps "$task")"
+    [ -n "$steps" ] || ap_die "refusing to bypass: the task has no '## Manual Verification' section documenting what a human must check" 2
+    id="$(ap_id_of "$task")"; title="$(sed -n '1s/^#[[:space:]]*//p' "$task")"; [ -n "$title" ] || title="$id"
+    mkdir -p "$(ap_task_state)"; echo needs-verification > "$(ap_task_state)/$id"
+    inbox="$(ap_inbox)"; mkdir -p "$(dirname "$inbox")"
+    { printf '\n## MANUAL VERIFICATION REQUIRED — %s (%s)\n' "$title" "$id"
+      printf 'The automated gate could not prove this here. Code is committed; a human must check:\n\n'
+      printf '%s\n' "$steps"
+      printf '\n(logged %s)\n' "$(date '+%Y-%m-%d %H:%M')"; } >> "$inbox"
+    ap_log "needs-verification: $id — $title (manual check queued to inbox)"
+    ap_notify "autopilot: MANUAL VERIFY" "$title ($id) — automated gate can't prove it; see .autopilot/inbox.md"
+    echo "recorded needs-verification for $id — human steps in $inbox"
+    echo "$steps" | sed 's/^/  /' ;;
 
   revert)
     # autopilot revert <task-file.md>  — restore ONLY the task's Allowed Files (scoped

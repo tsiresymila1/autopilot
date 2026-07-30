@@ -53,7 +53,7 @@ mkdir -p "$TMP/st"; cd "$TMP/st"
   echo done > .autopilot/state/a; echo done > .autopilot/state/b
   echo needs-human > .autopilot/state/c        # d has no state → todo
   out="$("$AP" status 2>&1)"
-  assert_contains "$out" "2 done · 0 blocked · 1 needs-human · 1 todo" "counts across queue + states"
+  assert_contains "$out" "2 done · 0 blocked · 1 needs-human · 0 needs-verification · 1 todo" "counts across queue + states"
   assert_contains "$out" "Scaffold app" "lists a task title"
   assert_contains "$out" "needs-human 003 — Wire routes" "shows the needs-human task with its state"
   assert_contains "$out" "todo        004 — Health check" "shows the untouched task as todo"
@@ -117,6 +117,27 @@ mkdir -p "$TMP/gate/src"; cd "$TMP/gate"
   "$AP" revert strong.md >/dev/null 2>&1
   grep -q DIRTY src/app.js && no "revert did not restore the allowed file" || ok "revert restores the Allowed File"
   grep -q DIRTY keep.txt && ok "revert leaves out-of-scope files untouched" || no "revert touched an out-of-scope file"
+cd "$ROOT"
+
+# --- needs-verify: documented gate bypass, refused without documentation ------
+echo "fixture: needs-verify (documented gate bypass)"
+mkdir -p "$TMP/nv"; cd "$TMP/nv"
+  git init -q; mkdir -p .autopilot/tasks .autopilot/state
+  # no ## Manual Verification section → must refuse, change nothing
+  printf '# 9 — conversions\n- **id**: p6-910\n- **gate**: `npx playwright test`\n## Allowed Files\n- src/x.ts\n' > nv.md
+  out="$(AUTOPILOT_NTFY_TOPIC="" "$AP" needs-verify nv.md 2>&1)"; code=$?
+  [ "$code" -eq 2 ] && ok "needs-verify refuses without ## Manual Verification" || no "expected exit 2, got $code"
+  [ -e .autopilot/state/p6-910 ] && no "refused bypass still wrote state" || ok "refused bypass writes no state"
+  # with the section → set state, write inbox, count in status
+  printf '## Manual Verification\n- open the dashboard\n- numbers match pre-refactor\n' >> nv.md
+  out="$(AUTOPILOT_NTFY_TOPIC="" "$AP" needs-verify nv.md 2>&1)"; code=$?
+  [ "$code" -eq 0 ] && ok "needs-verify accepts a documented bypass" || no "documented bypass exited $code"
+  [ "$(cat .autopilot/state/p6-910 2>/dev/null)" = needs-verification ] && ok "sets state needs-verification" || no "state not set"
+  assert_contains "$(cat .autopilot/inbox.md 2>/dev/null)" "MANUAL VERIFICATION REQUIRED" "records the manual steps to inbox"
+  assert_contains "$(cat .autopilot/inbox.md 2>/dev/null)" "numbers match pre-refactor" "inbox carries the exact steps"
+  cp nv.md .autopilot/tasks/009.md
+  assert_contains "$("$AP" status 2>&1)" "1 needs-verification" "status tallies needs-verification"
+  assert_contains "$("$AP" status --json 2>&1)" '"needs_verification":1' "json carries the needs-verification count"
 cd "$ROOT"
 
 # --- independent reviewer: backend dispatch + JSON validation ----------------

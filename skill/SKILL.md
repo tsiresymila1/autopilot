@@ -291,16 +291,35 @@ genuinely needed for the task. Decide, do not guess:
 An expansion widens the whitelist deliberately and on the record. It is never a silent
 drift.
 
-### The three task states
+### The task states
 
 | State | Meaning | The loop… |
 |---|---|---|
 | `done` | Gate passed, reviewed, committed | continues |
 | `blocked` | Technically stuck, no autonomous path | logs, moves on |
 | `needs-human` | Code may be done; a human action/decision remains | inbox, moves on |
+| `needs-verification` | Code done + committed, but the gate cannot **prove** it here | inbox + notify, moves on |
 
 `needs-human` is not failure — it is honest routing. Like a tracking task whose code is
 merged but whose sign-off is human.
+
+### When the gate cannot prove completion — the documented bypass
+
+Some tasks are done in code but their true "it works" gate cannot run in this
+headless environment: it needs a live app, an e2e/browser run, a test account, or
+a human's eyes (does the data still render identically?). Do **not** fake a green
+gate, and do **not** silently drop the work. Instead:
+
+1. Finish and **commit** the code (scope-checked, self-reviewed) as usual.
+2. Add a `## Manual Verification` section to the task listing exactly what a human
+   must check to confirm completion (the steps, the expected result).
+3. Run `autopilot needs-verify <task.md>`. It refuses unless that section exists,
+   sets the task `needs-verification`, records the steps to `.autopilot/inbox.md`,
+   and fires a notification. The work is surfaced, never silently accepted.
+
+This bypass is only for a gate that *genuinely cannot* run here — never to dodge a
+gate that would run but might fail. A runnable-but-red gate is `blocked`, not
+`needs-verification`.
 
 ### Deciding on your own
 
