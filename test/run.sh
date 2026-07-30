@@ -261,6 +261,10 @@ mkdir -p "$TMP/eng"; cd "$TMP/eng"; git init -q
   assert_contains "$out" "engine NOT started"  "--print-prompt says it started nothing"
   assert_contains "$out" "/autopilot phase 6"  "--print-prompt prints the engine prompt"
   [ -z "$(ls .autopilot/logs 2>/dev/null)" ] && ok "--print-prompt writes no session log" || no "session log written"
+  # --print-prompt is CLI-only: it must NOT leak into the engine prompt; real flags do
+  out="$("$AP" run "phase 6" --print-prompt --dry-run 2>&1 | grep '/autopilot')"
+  case "$out" in *--print-prompt*) no "--print-prompt leaked into the prompt";; *) ok "--print-prompt stripped from the prompt";; esac
+  assert_contains "$out" "--dry-run" "real flags stay forwarded to the skill"
 cd "$ROOT"
 
 # --- notifications -----------------------------------------------------------

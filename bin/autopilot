@@ -43,20 +43,22 @@ case "$cmd" in
   run|supervise)
     goal="${1:?usage: autopilot $cmd \"<goal or file>\" [opts]}"; shift || true
     # Preflight gate: block only on hard blockers; pass --yes through.
-    yes=""; dry=""
+    # --print-prompt is CLI-only; every other flag is forwarded to the skill.
+    yes=""; dry=""; fargs=()
     for a in "$@"; do
-      [ "$a" = "--yes" ]     && yes="--yes"
-      [ "$a" = "--print-prompt" ] && dry=1
+      [ "$a" = "--yes" ]          && yes="--yes"
+      [ "$a" = "--print-prompt" ] && { dry=1; continue; }
+      fargs+=("$a")
     done
     # --print-prompt touches nothing, so doctor is advisory: report, never block.
     bash "$LIB/doctor.sh" "$yes" || [ -n "$dry" ] \
       || ap_die "doctor blocked the run — fix the ✗ items above, or pass --yes" 3
     if [ "$cmd" = supervise ]; then
-      bash "$LIB/supervisor.sh" "$goal" "$@"
+      bash "$LIB/supervisor.sh" "$goal" ${fargs[@]+"${fargs[@]}"}
     else
       why="$(ap_engine_available)" || ap_die "$why"
       pf="$(mktemp)"; trap 'rm -f "$pf"' EXIT
-      ap_engine_prompt "$goal $*" "$pf"
+      ap_engine_prompt "$goal ${fargs[*]:-}" "$pf"
       if [ -n "$dry" ]; then
         echo; echo "--print-prompt — engine NOT started. It would receive:"; echo
         sed 's/^/  | /' "$pf"
