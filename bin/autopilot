@@ -8,6 +8,8 @@
 #   autopilot status [--json]          aggregate task states from .autopilot/state
 #   autopilot verify <task.md> [ref]   two-tier proof: scope + task gate + repo gate
 #   autopilot needs-verify <task.md>   documented gate bypass → needs-verification + notify
+#   autopilot report <task.md> --state S --did .. --why .. [--how ..] [--notes ..]  per-task report
+#   autopilot inbox <task.md> --do .. --why .. [--how ..] [--unblocks ..]           clear human item
 #   autopilot gate <task.md> [--repo]  run the task gate (or the repo-wide gate)
 #   autopilot gate-lint <task.md>      reject a weak/cheatable gate
 #   autopilot scope <task.md> [ref]    changed files outside the task's Allowed Files
@@ -33,7 +35,7 @@ LIB="$HERE/lib"
 # shellcheck source=lib/common.sh
 . "$LIB/common.sh" || { echo "autopilot: cannot load $LIB/common.sh — broken install?" >&2; exit 1; }
 
-usage() { sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'; }
 
 cmd="${1:-help}"; shift 2>/dev/null || true
 
@@ -120,6 +122,7 @@ EOF
       echo "run status: $st"
       echo "$done done · $blocked blocked · $human needs-human · $verify needs-verification · $todo todo"
       [ -n "$rows" ] && { echo; printf '%s' "$rows"; }
+      [ -d "$(ap_state_dir)/reports" ] && { echo; echo "per-task reports: $(ap_state_dir)/reports/ (INDEX.md)"; }
       [ -f "$(ap_inbox)" ] && { echo; echo "human inbox: $(ap_inbox)"; }
       true
     fi ;;
@@ -183,23 +186,69 @@ EOF
     # autopilot needs-verify <task-file.md>  — documented gate bypass.
     # Use ONLY when the automated gate genuinely cannot prove completion here
     # (needs a live app, e2e, a test account, or a human's eyes). It refuses
-    # unless the task documents a "## Manual Verification" section, records the
-    # steps to .autopilot/inbox.md as needs-human, and fires a notification —
+    # unless the task documents a "## Manual Verification" section, records a
+    # clear human item to .autopilot/inbox.md, and fires a notification —
     # so the work is never silently accepted, always surfaced for a human.
     task="${1:?usage: autopilot needs-verify <task-file.md>}"; [ -f "$task" ] || ap_die "no such task file: $task"
     steps="$(ap_manual_steps "$task")"
     [ -n "$steps" ] || ap_die "refusing to bypass: the task has no '## Manual Verification' section documenting what a human must check" 2
-    id="$(ap_id_of "$task")"; title="$(sed -n '1s/^#[[:space:]]*//p' "$task")"; [ -n "$title" ] || title="$id"
+    id="$(ap_id_of "$task")"
     mkdir -p "$(ap_task_state)"; echo needs-verification > "$(ap_task_state)/$id"
-    inbox="$(ap_inbox)"; mkdir -p "$(dirname "$inbox")"
-    { printf '\n## MANUAL VERIFICATION REQUIRED — %s (%s)\n' "$title" "$id"
-      printf 'The automated gate could not prove this here. Code is committed; a human must check:\n\n'
-      printf '%s\n' "$steps"
-      printf '\n(logged %s)\n' "$(date '+%Y-%m-%d %H:%M')"; } >> "$inbox"
-    ap_log "needs-verification: $id — $title (manual check queued to inbox)"
-    ap_notify "autopilot: MANUAL VERIFY" "$title ($id) — automated gate can't prove it; see .autopilot/inbox.md"
-    echo "recorded needs-verification for $id — human steps in $inbox"
-    echo "$steps" | sed 's/^/  /' ;;
+    ap_inbox_action "$task" "⚠" \
+      "Manually verify this task — the code is committed, but the automated gate cannot prove it in this environment." \
+      "The task's gate needs something not available headless (a live app, an e2e/browser run, a test account, or a human's eyes)." \
+      "$steps"
+    ap_log "needs-verification: $id (clear manual item queued to inbox)"
+    ap_notify "autopilot: MANUAL VERIFY" "$id — automated gate can't prove it; see .autopilot/inbox.md"
+    echo "recorded needs-verification for $id — human item in $(ap_inbox)" ;;
+
+  report)
+    # autopilot report <task.md> --state S --did "..." --why "..." [--how "..."] [--notes "..."]
+    # Writes a uniform per-task report to .autopilot/reports/<id>.md (what was
+    # done, how, why + gate/commit/files) so every task leaves the same readable
+    # trail. --state/--did/--why are required; the rest are filled from the task.
+    task="${1:?usage: autopilot report <task.md> --state S --did ... --why ...}"; shift || true
+    [ -f "$task" ] || ap_die "no such task file: $task"
+    r_state=""; r_did=""; r_why=""; r_how=""; r_notes=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --state) r_state="${2:-}"; shift 2 ;;
+        --did)   r_did="${2:-}";   shift 2 ;;
+        --why)   r_why="${2:-}";   shift 2 ;;
+        --how)   r_how="${2:-}";   shift 2 ;;
+        --notes) r_notes="${2:-}"; shift 2 ;;
+        *) ap_die "report: unknown option '$1'" 2 ;;
+      esac
+    done
+    [ -n "$r_state" ] || ap_die "report: --state is required (done|blocked|needs-human|needs-verification)" 2
+    [ -n "$r_did" ]   || ap_die "report: --did is required (what was actually done)" 2
+    [ -n "$r_why" ]   || ap_die "report: --why is required (why it was done this way)" 2
+    f="$(ap_report "$task" "$r_state" "$r_did" "$r_why" "$r_how" "$r_notes")"
+    echo "wrote $f" ;;
+
+  inbox)
+    # autopilot inbox <task.md> --do "..." --why "..." [--how "..."] [--unblocks "..."] [--icon X]
+    # Appends a clear human item (what to do, why, how, what it unblocks) and
+    # notifies. Use for blocked / needs-human items so a human can act without
+    # digging through logs. --do and --why are required.
+    task="${1:?usage: autopilot inbox <task.md> --do ... --why ...}"; shift || true
+    [ -f "$task" ] || ap_die "no such task file: $task"
+    i_do=""; i_why=""; i_how=""; i_unblocks=""; i_icon="⚑"
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --do)       i_do="${2:-}";       shift 2 ;;
+        --why)      i_why="${2:-}";      shift 2 ;;
+        --how)      i_how="${2:-}";      shift 2 ;;
+        --unblocks) i_unblocks="${2:-}"; shift 2 ;;
+        --icon)     i_icon="${2:-⚑}";    shift 2 ;;
+        *) ap_die "inbox: unknown option '$1'" 2 ;;
+      esac
+    done
+    [ -n "$i_do" ]  || ap_die "inbox: --do is required (the exact action a human must take)" 2
+    [ -n "$i_why" ] || ap_die "inbox: --why is required (why it needs a human)" 2
+    ap_inbox_action "$task" "$i_icon" "$i_do" "$i_why" "$i_how" "$i_unblocks"
+    ap_notify "autopilot: ACTION NEEDED" "$(ap_id_of "$task") — see .autopilot/inbox.md"
+    echo "queued a human item to $(ap_inbox)" ;;
 
   revert)
     # autopilot revert <task-file.md>  — restore ONLY the task's Allowed Files (scoped

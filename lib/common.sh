@@ -13,3 +13,5 @@ _ap_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$_ap_lib/gate.sh"
 # shellcheck source=lib/engine.sh
 . "$_ap_lib/engine.sh"
+# shellcheck source=lib/report.sh
+. "$_ap_lib/report.sh"

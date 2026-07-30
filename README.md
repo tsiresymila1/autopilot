@@ -137,6 +137,32 @@ reviewer enforces it. `autopilot docs status` must be green before execution;
 `autopilot docs init` scaffolds the ownership headers (never overwriting a filled doc, and
 never touching the project's own `docs/`).
 
+## Reports every human can read
+
+Every task leaves a uniform report, and every human item spells out the action — so you
+never have to read a log to know what happened or what you must do.
+
+```bash
+# per-task report → .autopilot/reports/<id>.md (gate, commit, files auto-filled)
+autopilot report <task.md> --state done \
+  --did "what was actually changed" \
+  --why "why this change, why this way" \
+  --how "the approach: files, subagents, how the gate proved it" \
+  --notes "anything deferred or worth knowing"
+
+# clear human item → .autopilot/inbox.md (+ notification)
+autopilot inbox <task.md> \
+  --do  "the exact action a human must take" \
+  --why "why it is blocked / needs a human" \
+  --how "concrete steps or the decision to make" \
+  --unblocks "what finishing it frees up"
+```
+
+Both refuse empty required fields (`--did/--why`, `--do/--why`), so a report is never a
+placeholder. The skill calls `report` after every task and `inbox` for every blocked /
+needs-human item. `.autopilot/reports/INDEX.md` lists them all; `autopilot status` points
+at the reports dir and the inbox.
+
 ## When the gate can't prove it — documented bypass
 
 Some work is done in code but its real gate can't run here: it needs a live app, an

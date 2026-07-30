@@ -27,11 +27,13 @@ reviewer judges quality on top; the gate judges completion at the bottom. No gat
 .autopilot/
 ├── status                     RUNNING | DONE | BLOCKED  (read by the supervisor)
 ├── lock                       the supervisor's pid, so two runs never collide
-├── state/<task-id>            done | blocked | needs-human  (one file per task)
+├── state/<task-id>            done | blocked | needs-human | needs-verification (one per task)
 ├── tasks/NNN-slug.md          one task spec per file (see below)
+├── reports/<task-id>.md       per-task report: what/how/why (autopilot report)
+├── reports/INDEX.md           one line per task, newest last
 ├── plan.md                    the triage that produced the task list
 ├── journal.md                 detailed journal + gate provenance, appended every session
-├── inbox.md                   everything awaiting a human action or decision
+├── inbox.md                   clear human items: what to do + why (autopilot inbox)
 └── logs/                      supervisor.log + session-<ts>.log (supervise runs)
 docs/plans/*.md                plans produced by recon tasks (these ARE committed)
 ```
@@ -263,16 +265,33 @@ which failure is yours.
      - `SCOPE_EXPANSION_REQUIRED` → apply the scope-expansion protocol
      - `RISKY` → **`autopilot revert .autopilot/tasks/NNN-slug.md`** (scoped revert —
        restores only the Allowed Files, never a global reset), mark `blocked`, log, next task
-7. **Record**:
+7. **Record** — every task leaves a report, no exception:
    - `echo done > .autopilot/state/<id>` (or `blocked` / `needs-human`)
-   - append to `journal.md`: task id, what was done, gate result, decisions taken
+   - **Write the per-task report** so a human can see what happened without reading logs:
+     ```
+     autopilot report .autopilot/tasks/NNN-slug.md --state done \
+       --did "what was actually changed, concretely" \
+       --why "why this change, why this way" \
+       --how "the approach: files touched, subagents used, how the gate proved it" \
+       --notes "anything deferred, risky, or worth knowing next"
+     ```
+     Write real prose, not placeholders — `--did/--why` are what a teammate reads first.
+     It lands in `.autopilot/reports/<id>.md` with the gate, commit, and files auto-filled.
+   - append to `journal.md`: task id, gate result, decisions taken (the chronological trail)
    - commit via `writer` (one task or a small batch)
 8. **Guards**:
-   - **Verify still red after 2 build attempts** → `autopilot revert`, mark `blocked`, log
-     why, move on. Looping on a gate that will not go green burns budget without converging.
+   - **Verify still red after 2 build attempts** → `autopilot revert`, mark `blocked`, then
+     write a **clear human item** — never a bare note:
+     ```
+     autopilot inbox .autopilot/tasks/NNN-slug.md \
+       --do "the exact action a human must take" \
+       --why "why it is blocked / why it needs a human" \
+       --how "concrete steps, commands, or the decision to make" \
+       --unblocks "what finishing this frees up"
+     ```
    - **The task needs a human** (a merge decision, an architecture call, a secret to
-     rotate) → `needs-human`, write it to `inbox.md`, move on. Its code may be
-     finished; what remains is the human part.
+     rotate) → `needs-human`, then the same `autopilot inbox ...` with `--do/--why`. Its
+     code may be finished; what remains is the human part — say exactly what and why.
 
 ### Scope-expansion protocol
 

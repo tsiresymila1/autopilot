@@ -133,11 +133,35 @@ mkdir -p "$TMP/nv"; cd "$TMP/nv"
   out="$(AUTOPILOT_NTFY_TOPIC="" "$AP" needs-verify nv.md 2>&1)"; code=$?
   [ "$code" -eq 0 ] && ok "needs-verify accepts a documented bypass" || no "documented bypass exited $code"
   [ "$(cat .autopilot/state/p6-910 2>/dev/null)" = needs-verification ] && ok "sets state needs-verification" || no "state not set"
-  assert_contains "$(cat .autopilot/inbox.md 2>/dev/null)" "MANUAL VERIFICATION REQUIRED" "records the manual steps to inbox"
+  assert_contains "$(cat .autopilot/inbox.md 2>/dev/null)" "Manually verify this task" "records a clear manual item to inbox"
   assert_contains "$(cat .autopilot/inbox.md 2>/dev/null)" "numbers match pre-refactor" "inbox carries the exact steps"
   cp nv.md .autopilot/tasks/009.md
   assert_contains "$("$AP" status 2>&1)" "1 needs-verification" "status tallies needs-verification"
   assert_contains "$("$AP" status --json 2>&1)" '"needs_verification":1' "json carries the needs-verification count"
+cd "$ROOT"
+
+# --- report + inbox: uniform human-facing writers -----------------------------
+echo "fixture: report + inbox writers"
+mkdir -p "$TMP/rep"; cd "$TMP/rep"
+  git init -q; echo x > f; git add -A && git -c user.email=t@t -c user.name=t commit -qm init
+  printf '# 42 — Convert dashboard\n- **id**: p6-042\n- **gate**: `npm run build`\n## Allowed Files\n- src/d.tsx\n' > rt.md
+  # report: required fields enforced
+  "$AP" report rt.md --state done >/dev/null 2>&1; [ "$?" -eq 2 ] && ok "report requires --did/--why" || no "missing fields not caught"
+  out="$("$AP" report rt.md --state done --did "moved queries to a hook" --why "boundary + caching" --how "added api/useX, ran check:types" --notes "aiProxy deferred" 2>&1)"
+  [ "$?" -eq 0 ] && ok "report writes with all fields" || no "report failed"
+  rf=".autopilot/reports/p6-042.md"
+  assert_contains "$(cat $rf 2>/dev/null)" "## What was done" "report has the What section"
+  assert_contains "$(cat $rf 2>/dev/null)" "moved queries to a hook" "report carries the did prose"
+  assert_contains "$(cat $rf 2>/dev/null)" "## Why" "report has the Why section"
+  assert_contains "$(cat $rf 2>/dev/null)" '**gate:**' "report auto-fills the gate"
+  assert_contains "$(cat .autopilot/reports/INDEX.md 2>/dev/null)" "p6-042" "report appends to INDEX"
+  # inbox: clear human item with required action + why
+  "$AP" inbox rt.md --do "" --why "x" >/dev/null 2>&1; [ "$?" -eq 2 ] && ok "inbox requires --do" || no "empty --do not caught"
+  AUTOPILOT_NTFY_TOPIC="" "$AP" inbox rt.md --do "Merge agent/phase-3-4" --why "reviewed, ready; autopilot never merges" --how "git merge --no-ff" --unblocks "tsc root cause" >/dev/null 2>&1
+  ib="$(cat .autopilot/inbox.md 2>/dev/null)"
+  assert_contains "$ib" "What to do:** Merge agent/phase-3-4" "inbox states the action"
+  assert_contains "$ib" "Why:** reviewed, ready"              "inbox states why"
+  assert_contains "$ib" "Unblocks:** tsc root cause"          "inbox states what it unblocks"
 cd "$ROOT"
 
 # --- independent reviewer: backend dispatch + JSON validation ----------------
