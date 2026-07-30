@@ -265,7 +265,25 @@ mkdir -p "$TMP/eng"; cd "$TMP/eng"; git init -q
   out="$("$AP" run "phase 6" --print-prompt --dry-run 2>&1 | grep '/autopilot')"
   case "$out" in *--print-prompt*) no "--print-prompt leaked into the prompt";; *) ok "--print-prompt stripped from the prompt";; esac
   assert_contains "$out" "--dry-run" "real flags stay forwarded to the skill"
+  # model pin: AUTOPILOT_CLAUDE_MODEL must reach the claude CLI as --model.
+  # A stub `claude` on PATH records its args; unset = no --model at all.
+  stub="$TMP/eng/bin"; mkdir -p "$stub"
+  printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$@" > "%s/claude.args"\n' "$TMP/eng" > "$stub/claude"
+  chmod +x "$stub/claude"; echo "hi" > "$pf"
+  ( . "$ROOT/lib/common.sh"; PATH="$stub:$PATH" AUTOPILOT_CLAUDE_MODEL=claude-opus-4-8 ap_engine_exec "$pf" )
+  assert_contains "$(cat "$TMP/eng/claude.args")" "--model" "pin passes --model to claude"
+  assert_contains "$(cat "$TMP/eng/claude.args")" "claude-opus-4-8" "pin passes the model id"
+  ( . "$ROOT/lib/common.sh"; PATH="$stub:$PATH" ap_engine_exec "$pf" )
+  case "$(cat "$TMP/eng/claude.args")" in *--model*) no "--model sent when no pin set";; *) ok "no --model when pin unset";; esac
 cd "$ROOT"
+
+# --- supervisor: transient 5xx retries fast, not on the 60s generic path ------
+echo "fixture: supervisor transient-error classification"
+  re='5[0-9]{2} .*(internal server|server error)|overloaded|Execution error|API Error: 5[0-9]{2}'
+  echo 'API Error: 500 Internal server error.' | grep -qiE "$re" && ok "500 classed transient" || no "500 missed"
+  echo 'Retryable overloaded_error' | grep -qiE "$re" && ok "overloaded classed transient" || no "overloaded missed"
+  echo 'Execution error' | grep -qiE "$re" && ok "execution error classed transient" || no "exec error missed"
+  echo 'TypeError: undefined is not a function' | grep -qiE "$re" && no "real bug misclassed transient" || ok "a genuine failure is not transient"
 
 # --- notifications -----------------------------------------------------------
 echo "fixture: notifications"

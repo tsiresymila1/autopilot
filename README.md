@@ -333,10 +333,17 @@ AUTOPILOT_ENGINE=codex autopilot run "<goal>"  # Codex
 | `claude` (default) | the installed skill, invoked as `/autopilot <goal>` | spawns the bundled subagents (builder, reviewer, …) |
 | `codex` | `skill/SKILL.md` is inlined on stdin — Codex has no skill system | no subagents: it performs each role itself, in the same order |
 
+Claude knob: `AUTOPILOT_CLAUDE_MODEL` pins the model (e.g. `claude-opus-4-8`) so a run
+is reproducible and can dodge a flaky tier; unset uses the claude CLI's own default.
+
 Codex knobs: `AUTOPILOT_CODEX_MODEL`, `AUTOPILOT_CODEX_EFFORT` (e.g. `xhigh`),
 `AUTOPILOT_CODEX_SANDBOX` (default `workspace-write`), `AUTOPILOT_CODEX_APPROVAL`
 (default `never`, so an autonomous run never waits on approval). `doctor` reports the
 active engine and whether it is usable.
+
+`supervise` classifies why a session ended: a quota block waits for the reset, a
+transient server error (5xx / overloaded / execution error) retries in
+`TRANSIENT_WAIT` seconds (default `10`), any other non-zero exit retries in 60s.
 
 The checkable steps (`gate-lint`, `gate`, `scope`, `verify`, `revert`, `docs`, `status`)
 are CLI verbs, not model behaviour — so they hold identically on either engine. That

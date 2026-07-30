@@ -62,6 +62,9 @@ ap_engine_exec() {
       args+=("-")
       codex "${args[@]}" < "$pf" ;;
     *)
-      claude -p "$(cat "$pf")" --permission-mode "${PERMISSION_MODE:-bypassPermissions}" ;;
+      # Pin the model when asked, so a run is reproducible and can dodge a flaky
+      # tier; unset = the claude CLI's own default.
+      local -a m=(); [ -n "${AUTOPILOT_CLAUDE_MODEL:-}" ] && m=(--model "$AUTOPILOT_CLAUDE_MODEL")
+      claude -p "$(cat "$pf")" ${m[@]+"${m[@]}"} --permission-mode "${PERMISSION_MODE:-bypassPermissions}" ;;
   esac
 }

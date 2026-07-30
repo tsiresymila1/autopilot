@@ -19,6 +19,7 @@ EXTRA="$*"
 
 MAX_RELAUNCH="${MAX_RELAUNCH:-24}"
 RETRY_WAIT="${RETRY_WAIT:-900}"                 # fallback wait if reset time unknown
+TRANSIENT_WAIT="${TRANSIENT_WAIT:-10}"         # server 5xx / overloaded: clears in seconds
 PERMISSION_MODE="${PERMISSION_MODE:-bypassPermissions}"
 
 why="$(ap_engine_available)" || ap_die "$why"
@@ -76,6 +77,8 @@ for i in $(seq 1 "$MAX_RELAUNCH"); do
 
   if grep -qiE 'usage limit|rate limit|quota|too many requests|limite.*atteinte|429' "$OUT"; then
     wait_for_reset "$OUT"
+  elif grep -qiE '5[0-9]{2} .*(internal server|server error)|overloaded|Execution error|API Error: 5[0-9]{2}' "$OUT"; then
+    log "🔁 transient server error — retry in ${TRANSIENT_WAIT}s"; tail -3 "$OUT"; sleep "$TRANSIENT_WAIT"
   elif [ "$code" -ne 0 ]; then
     log "⚠️  unexpected failure (code $code) — retry in 60 s"; tail -15 "$OUT"; sleep 60
   else
