@@ -103,14 +103,22 @@ ${body}"
 … truncated — full report: .autopilot/reports/${id:-<id>}.md"
   fi
   # --data-urlencode keeps arbitrary prose injection-safe (no shell/URL parsing).
-  curl -fsS -m 10 \
+  # Capture the response (not the token) so a failure can report the API reason —
+  # e.g. "the bot can't send messages to the bot" or "chat not found".
+  local resp
+  resp="$(curl -sS -m 10 \
     --data-urlencode "chat_id=${AUTOPILOT_TELEGRAM_CHAT_ID}" \
     --data-urlencode "text=${text}" \
     --data-urlencode "parse_mode=Markdown" \
     --data-urlencode "disable_web_page_preview=true" \
-    "https://api.telegram.org/bot${AUTOPILOT_TELEGRAM_TOKEN}/sendMessage" >/dev/null 2>&1 \
-    && echo "notified via telegram (chat ${AUTOPILOT_TELEGRAM_CHAT_ID})" \
-    || echo "telegram push failed (chat ${AUTOPILOT_TELEGRAM_CHAT_ID})"
+    "https://api.telegram.org/bot${AUTOPILOT_TELEGRAM_TOKEN}/sendMessage" 2>/dev/null)"
+  case "$resp" in
+    *'"ok":true'*) echo "notified via telegram (chat ${AUTOPILOT_TELEGRAM_CHAT_ID})" ;;
+    *)
+      local why
+      why="$(printf '%s' "$resp" | sed -n 's/.*"description":"\([^"]*\)".*/\1/p')"
+      echo "telegram push failed (chat ${AUTOPILOT_TELEGRAM_CHAT_ID})${why:+: $why}" ;;
+  esac
 }
 
 _ap_ch_webhook() {
