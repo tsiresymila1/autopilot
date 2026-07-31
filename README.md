@@ -1,4 +1,8 @@
-# autopilot
+<p align="center">
+  <img src="assets/logo.svg" width="120" height="120" alt="autopilot logo">
+</p>
+
+<h1 align="center">autopilot</h1>
 
 Drive any goal — a sentence, a brief, a task list, a requirements document — to
 committed, reviewed code **autonomously**, on any project in any state.
