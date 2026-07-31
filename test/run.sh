@@ -410,21 +410,65 @@ echo "fixture: supervisor transient-error classification"
 
 # --- notifications -----------------------------------------------------------
 echo "fixture: notifications"
-mkdir -p "$TMP/notif"; cd "$TMP/notif"
+mkdir -p "$TMP/notif"; cd "$TMP/notif"; git init -q
   # custom hook receives title + body
   hook="$TMP/notif/got.txt"
   out="$(AUTOPILOT_NOTIFY="printf '%s|%s' \"\$AUTOPILOT_NOTIFY_TITLE\" \"\$AUTOPILOT_NOTIFY_BODY\" > '$hook'" \
         "$AP" notify "T1" "B1" 2>&1)"
   assert_contains "$out" "notified via AUTOPILOT_NOTIFY" "reports the custom hook fired"
   [ -f "$hook" ] && assert_contains "$(cat "$hook")" "T1|B1" "hook receives title and body" || no "hook not invoked"
-  # ntfy takes priority when a topic is set; unreachable server → reported failure, run survives
+  # fan-out: ntfy AND the custom hook both fire now (not first-match)
   out="$(AUTOPILOT_NTFY_TOPIC=mytopic AUTOPILOT_NTFY_SERVER=http://127.0.0.1:1 \
         AUTOPILOT_NOTIFY="true" "$AP" notify "T" "B" 2>&1)"
-  assert_contains "$out" "ntfy" "ntfy backend chosen over the custom hook when a topic is set"
+  assert_contains "$out" "ntfy"               "ntfy channel fires when a topic is set"
+  assert_contains "$out" "AUTOPILOT_NOTIFY"   "fan-out: the custom hook also fires alongside ntfy"
   # doctor advertises the ntfy backend
-  ( cd "$TMP/notif" && git init -q )
   dout="$(AUTOPILOT_NTFY_TOPIC=mytopic "$AP" doctor 2>&1)"
   assert_contains "$dout" "notifications via ntfy" "doctor reports the ntfy backend"
+cd "$ROOT"
+
+# --- rich per-step: telegram + webhook fan-out, level filter, event verb ------
+echo "fixture: per-step events (telegram + webhook + level)"
+mkdir -p "$TMP/evt"; cd "$TMP/evt"; git init -q
+  # stub curl on PATH: capture argv only (no stdin read → never blocks), always succeed
+  stub="$TMP/evt/bin"; mkdir -p "$stub"
+  printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s/curl.cap"\nexit 0\n' "$TMP/evt" > "$stub/curl"
+  chmod +x "$stub/curl"
+  TOK=SECRETTOK123
+  # 1. fan-out: telegram + webhook both fire on a verbose decision; token never echoed
+  : > curl.cap
+  out="$(PATH="$stub:$PATH" AUTOPILOT_TELEGRAM_TOKEN=$TOK AUTOPILOT_TELEGRAM_CHAT_ID=999 \
+        AUTOPILOT_WEBHOOK_URL=http://wh AUTOPILOT_NOTIFY_LEVEL=verbose \
+        "$AP" event decision "d1 decision" "because reasons" 2>&1)"
+  assert_contains "$out" "notified via telegram" "verbose decision pushes to telegram"
+  assert_contains "$out" "notified via webhook"  "verbose decision pushes to webhook (fan-out)"
+  case "$out" in *"$TOK"*) no "SECURITY: telegram token leaked to stdout";; *) ok "telegram token never echoed";; esac
+  assert_contains "$(cat curl.cap)" "api.telegram.org/bot$TOK/sendMessage" "telegram endpoint called"
+  assert_contains "$(cat curl.cap)" "chat_id=999" "telegram carries the chat id"
+  assert_contains "$(cat curl.cap)" "http://wh"   "webhook URL called"
+  # 2. level filter: milestones drops a decision from channels, but events.log still records it
+  : > curl.cap
+  out="$(PATH="$stub:$PATH" AUTOPILOT_TELEGRAM_TOKEN=$TOK AUTOPILOT_TELEGRAM_CHAT_ID=999 \
+        AUTOPILOT_NOTIFY_LEVEL=milestones "$AP" event decision "d2" "x" 2>&1)"
+  case "$out" in *"notified via"*) no "milestones level wrongly pushed a decision";; *) ok "milestones level suppresses a decision push";; esac
+  assert_contains "$(cat .autopilot/events.log)" "decision" "events.log records the event even when not pushed"
+  # 3. a milestone-level kind DOES push at milestones level
+  : > curl.cap
+  out="$(PATH="$stub:$PATH" AUTOPILOT_TELEGRAM_TOKEN=$TOK AUTOPILOT_TELEGRAM_CHAT_ID=999 \
+        AUTOPILOT_NOTIFY_LEVEL=milestones "$AP" event run-done "done!" "finished" 2>&1)"
+  assert_contains "$out" "notified via telegram" "milestone kind pushes at milestones level"
+  # 4. event verb formats: gate event carries title + emoji in the telegram payload
+  : > curl.cap
+  PATH="$stub:$PATH" AUTOPILOT_TELEGRAM_TOKEN=$TOK AUTOPILOT_TELEGRAM_CHAT_ID=999 \
+    AUTOPILOT_NOTIFY_LEVEL=steps "$AP" event gate "gate pass 001" --state pass >/dev/null 2>&1
+  assert_contains "$(cat curl.cap)" "gate pass 001" "gate event payload carries the title"
+  # 5. doctor lists telegram + webhook + level, never the token
+  dout="$(AUTOPILOT_TELEGRAM_TOKEN=$TOK AUTOPILOT_TELEGRAM_CHAT_ID=999 AUTOPILOT_WEBHOOK_URL=http://wh \
+        AUTOPILOT_NOTIFY_LEVEL=verbose "$AP" doctor 2>&1)"
+  assert_contains "$dout" "notifications via telegram" "doctor advertises telegram"
+  assert_contains "$dout" "notifications via webhook"  "doctor advertises webhook"
+  assert_contains "$dout" "notify level: verbose"      "doctor reports the notify level"
+  case "$dout" in *"$TOK"*) no "SECURITY: doctor leaked the telegram token";; *) ok "doctor never prints the token";; esac
 cd "$ROOT"
 
 echo

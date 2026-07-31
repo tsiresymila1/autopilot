@@ -9,6 +9,8 @@ _ap_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$_ap_lib/project.sh"
 # shellcheck source=lib/notify.sh
 . "$_ap_lib/notify.sh"
+# shellcheck source=lib/channels.sh
+. "$_ap_lib/channels.sh"
 # shellcheck source=lib/gate.sh
 . "$_ap_lib/gate.sh"
 # shellcheck source=lib/engine.sh

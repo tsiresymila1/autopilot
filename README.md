@@ -68,6 +68,7 @@ autopilot gate-lint <task.md>       # reject a weak / cheatable gate
 autopilot scope <task.md> [ref]     # changed files outside the task's ## Allowed Files
 autopilot revert <task.md>          # restore only the task's Allowed Files (scoped)
 autopilot review <task.md> [ref]    # independent JSON verdict from another model
+autopilot event <kind> <title> ..   # push a per-step notification (Telegram/webhook/ntfy)
 autopilot docs [status|init]        # the durable-doc quad (committed source of truth)
 autopilot logs [what] [-f] [-n N]   # session (default) | supervisor | gate-<id> | journal | ls
 autopilot notify "<title>" "<msg>"  # fire a milestone notification (test the hook)
@@ -349,6 +350,7 @@ State lives in `.autopilot/` (git-ignored, local to the worktree):
 .autopilot/plan.md           the Phase-1 decomposition
 .autopilot/journal.md        decisions + gate provenance, logged as they happen
 .autopilot/inbox.md          everything awaiting a human
+.autopilot/events.log        append-only per-step event feed (what got notified)
 .autopilot/logs/             supervisor.log · session-<ts>.log · gate-<id>.log
 ```
 
@@ -386,32 +388,49 @@ described in the skill:
   only its Allowed Files, never a global `reset --hard` — so the tree never carries
   half-done work and unrelated changes are untouched.
 
-## Notifications — you walk away, it pings you
+## Notifications — walk away, watch every step from your phone
 
-A `supervise` run can span hours and quota resets. When it reaches a terminal state it
-fires a notification so you don't have to watch the terminal:
+A `supervise` run can span hours and quota resets. You can follow it **step by step** on
+Telegram (or a webhook) instead of the terminal — every gate result, verify, review verdict,
+each task done **with its full report**, each decision, and the run's terminal state.
 
-| State | Notified |
+### Verbosity
+
+`AUTOPILOT_NOTIFY_LEVEL` controls how much is pushed (every event is always recorded to
+`.autopilot/events.log` regardless):
+
+| Level | You get |
 |---|---|
-| `DONE` | nothing left to do |
-| `BLOCKED` | a human is needed (see `.autopilot/inbox.md`) |
-| relaunch cap hit | still not done after N relaunches |
+| `milestones` | run `DONE`/`BLOCKED`/`STUCK` + anything needing a human |
+| `steps` (default) | + every gate, verify, review, and task done — the deterministic per-step feed |
+| `verbose` | + each decision and task cut (best-effort, emitted by the engine) |
 
-The main backend is **ntfy** — push to your phone from anywhere. Pick a topic and
-subscribe to it in the ntfy app (or ntfy.sh in a browser):
+The per-step feed (`steps`) is emitted **deterministically by the CLI verbs and the
+supervisor** — it does not depend on the engine remembering to notify. `verbose` adds the
+engine's own decision commentary on top.
+
+### Channels (all configured ones fire — fan-out)
+
+Set these once in `.autopilot.env` (gitignored, so tokens stay out of git):
 
 ```bash
-export AUTOPILOT_NTFY_TOPIC=my-autopilot-a1b2c3      # required to enable ntfy
-# optional:
-export AUTOPILOT_NTFY_SERVER=https://ntfy.sh         # self-hosted server if you run one
-export AUTOPILOT_NTFY_TOKEN=tk_xxx                   # Bearer auth for private topics
-autopilot notify "test" "hello from autopilot"       # fire a test push
+AUTOPILOT_NOTIFY_LEVEL=verbose
+# Telegram — @BotFather → /newbot for the token; message the bot once, then read the
+# chat id from https://api.telegram.org/bot<TOKEN>/getUpdates
+AUTOPILOT_TELEGRAM_TOKEN=123456:ABC...
+AUTOPILOT_TELEGRAM_CHAT_ID=123456789
+# Generic webhook — POST JSON {kind,title,body,task,state,ts}; point at n8n / Make /
+# Twilio (WhatsApp) / your own bot
+AUTOPILOT_WEBHOOK_URL=https://example.com/hooks/autopilot
+# ntfy still works too
+AUTOPILOT_NTFY_TOPIC=my-autopilot-a1b2c3
 ```
 
-Backend priority, best-effort (never fails the run): **ntfy** (`AUTOPILOT_NTFY_TOPIC`) →
-custom `AUTOPILOT_NOTIFY` command (title/body in `$AUTOPILOT_NOTIFY_TITLE` /
-`$AUTOPILOT_NOTIFY_BODY`) → macOS `osascript` → Linux `notify-send` → none. `doctor`
-reports which is active.
+Test one: `autopilot event decision "hello" "from autopilot"`. Every channel is best-effort
+(a failure never stops the run) and each reports itself; `doctor` lists the active channels
+and the level. The Telegram token is never printed by the tool — but keep secrets out of
+event bodies, since they reach the webhook. A verbose run of a large queue is a lot of
+messages; the desktop popup channel is capped at milestones so your laptop stays quiet.
 
 ## Logs, progress, and agent output
 

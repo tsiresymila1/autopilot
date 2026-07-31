@@ -224,6 +224,10 @@ the `specify` CLI is installed but this project has no spec-kit yet, scaffold it
 No spec-kit and no `specify` CLI → decompose plainly into the same ordered task list. Either way, **turn each
 task into a queue file** `.autopilot/tasks/NNN-slug.md` and **give each one a gate**.
 
+After writing each task file, announce the cut so the operator watching the channel
+sees the plan form — one call per task:
+`autopilot event task-cut "NNN-slug: <title>" "gate: <cmd> — why this slice" --task .autopilot/tasks/NNN-slug.md`
+
 ### Designing the gate (the hard, non-optional part)
 
 Start from the project's default, then tighten to the task:
@@ -255,6 +259,20 @@ Write `.autopilot/plan.md`: the decomposition, risks, execution order, and the b
 decisions up front. If `--dry-run`, stop here and report the task list.
 
 ## Phase 2 — The execution loop
+
+Announce the start so the operator sees the run enter execution:
+`autopilot event phase "Phase 2 — execution" "<N> tasks queued"`.
+
+**Notifying the operator.** The operator may be watching a channel (Telegram/webhook)
+instead of the terminal. The per-step feed — gate results, verify, review verdicts, each
+task done (with its full report), and the run's terminal state — is emitted **automatically
+and deterministically by the CLI verbs** (`autopilot gate/verify/review/report`) and the
+supervisor; you do **not** need to notify those, and that coverage does not depend on you.
+Your only job is the *verbose* extras: call `autopilot event decision "<one-line decision>"
+"<why; alternatives rejected>"` at each material decision (a scope call, a durable-doc
+choice, marking something needs-human, a design trade-off). These are best-effort — if you
+skip them the run still reports every step; if you make them the operator sees your reasoning
+live. Never put a secret in an event body — it reaches the webhook.
 
 For each task in dependency order (skip those whose `depends` is not `done`):
 

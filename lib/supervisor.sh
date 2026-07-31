@@ -93,8 +93,8 @@ for i in $(seq 1 "$MAX_RELAUNCH"); do
   log "session ended (code $code) · status=$status"
 
   case "$status" in
-    DONE)    log "✅ done — nothing left"; ap_notify "autopilot: DONE" "$GOAL — nothing left to do"; tail -40 "$OUT"; exit 0 ;;
-    BLOCKED) log "⛔ blocked — human needed (see .autopilot/inbox.md)"; ap_notify "autopilot: BLOCKED" "$GOAL — human needed (.autopilot/inbox.md)"; tail -40 "$OUT"; exit 2 ;;
+    DONE)    log "✅ done — nothing left"; ap_event run-done "autopilot: DONE" "$GOAL — nothing left to do" "" DONE milestones; tail -40 "$OUT"; exit 0 ;;
+    BLOCKED) log "⛔ blocked — human needed (see .autopilot/inbox.md)"; ap_event run-blocked "autopilot: BLOCKED" "$GOAL — human needed (.autopilot/inbox.md)" "" BLOCKED milestones; tail -40 "$OUT"; exit 2 ;;
   esac
 
   if grep -qiE 'usage limit|rate limit|quota|too many requests|limite.*atteinte|429' "$OUT"; then
@@ -111,7 +111,7 @@ for i in $(seq 1 "$MAX_RELAUNCH"); do
       log "session made no change ($stall/$STALL_LIMIT no-op sessions)"
       if [ "$stall" -ge "$STALL_LIMIT" ]; then
         log "🛑 stuck — $stall sessions changed nothing. The engine keeps concluding without a terminal status (already done, or a human decision is pending). Stopping. See the last session below and .autopilot/inbox.md."
-        ap_notify "autopilot: STUCK" "$GOAL — no progress in $stall sessions; likely needs a human"
+        ap_event run-stuck "autopilot: STUCK" "$GOAL — no progress in $stall sessions; likely needs a human" "" STUCK milestones
         tail -40 "$OUT"; exit 4
       fi
     else
@@ -122,5 +122,5 @@ for i in $(seq 1 "$MAX_RELAUNCH"); do
 done
 
 log "⚠️  hit the $MAX_RELAUNCH relaunch cap — stopping"
-ap_notify "autopilot: STOPPED" "$GOAL — hit the $MAX_RELAUNCH relaunch cap, still not done"
+ap_event run-stopped "autopilot: STOPPED" "$GOAL — hit the $MAX_RELAUNCH relaunch cap, still not done" "" STOPPED milestones
 exit 3

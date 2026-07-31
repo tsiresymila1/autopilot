@@ -75,11 +75,19 @@ else note "engine $(ap_engine) unusable — $why"; fi
 say '·' "output language: ${AUTOPILOT_LANG:-en} (reports/inbox/summary) — set AUTOPILOT_LANG or --lang"
 [ -f "$root/.autopilot.env" ] && pass "per-repo config loaded (.autopilot.env)" \
   || say '·' "no .autopilot.env — copy .autopilot.env.example to set options once"
-if [ -n "${AUTOPILOT_NTFY_TOPIC:-}" ]; then pass "notifications via ntfy (${AUTOPILOT_NTFY_SERVER:-https://ntfy.sh}/$AUTOPILOT_NTFY_TOPIC)"
-elif [ -n "${AUTOPILOT_NOTIFY:-}" ]; then pass "notifications via AUTOPILOT_NOTIFY hook"
-elif command -v osascript >/dev/null 2>&1; then pass "notifications via osascript (macOS, local only)"
-elif command -v notify-send >/dev/null 2>&1; then pass "notifications via notify-send (local only)"
-else note "no notifier — set AUTOPILOT_NTFY_TOPIC to be pinged on DONE/BLOCKED from anywhere"; fi
+# All configured channels fire (fan-out), not just one. Never print the telegram token.
+nch=0
+[ -n "${AUTOPILOT_NTFY_TOPIC:-}" ]     && { pass "notifications via ntfy (${AUTOPILOT_NTFY_SERVER:-https://ntfy.sh}/$AUTOPILOT_NTFY_TOPIC)"; nch=$((nch+1)); }
+if [ -n "${AUTOPILOT_TELEGRAM_TOKEN:-}" ] && [ -n "${AUTOPILOT_TELEGRAM_CHAT_ID:-}" ]; then pass "notifications via telegram (chat $AUTOPILOT_TELEGRAM_CHAT_ID)"; nch=$((nch+1))
+elif [ -n "${AUTOPILOT_TELEGRAM_TOKEN:-}" ]; then note "telegram token set but AUTOPILOT_TELEGRAM_CHAT_ID missing"; fi
+[ -n "${AUTOPILOT_WEBHOOK_URL:-}" ]     && { pass "notifications via webhook (JSON POST)"; nch=$((nch+1)); }
+[ -n "${AUTOPILOT_NOTIFY:-}" ]          && { pass "notifications via AUTOPILOT_NOTIFY hook"; nch=$((nch+1)); }
+if [ "$nch" -eq 0 ]; then
+  if command -v osascript >/dev/null 2>&1; then pass "notifications via osascript (macOS, local only)"
+  elif command -v notify-send >/dev/null 2>&1; then pass "notifications via notify-send (local only)"
+  else note "no notifier — set AUTOPILOT_TELEGRAM_TOKEN + _CHAT_ID, AUTOPILOT_WEBHOOK_URL, or AUTOPILOT_NTFY_TOPIC"; fi
+fi
+say '·' "notify level: ${AUTOPILOT_NOTIFY_LEVEL:-steps} (milestones · steps · verbose)"
 rev="${AUTOPILOT_REVIEWER:-subagent}"
 if [ "$rev" = subagent ]; then
   note "reviewer: subagent (same model). Set AUTOPILOT_REVIEWER=codex for independent review"

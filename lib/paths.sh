@@ -20,6 +20,7 @@ ap_logs_dir()    { echo "$(ap_state_dir)/logs"; }          # supervisor.log + se
 ap_journal()     { echo "$(ap_state_dir)/journal.md"; }    # decisions, gate results
 ap_inbox()       { echo "$(ap_state_dir)/inbox.md"; }      # awaiting a human
 ap_plan()        { echo "$(ap_state_dir)/plan.md"; }       # the decomposition
+ap_events_log()  { echo "$(ap_state_dir)/events.log"; }    # append-only per-step event feed
 
 # The durable docs are COMMITTED (unlike .autopilot/): namespaced under docs/autopilot/
 # so they never collide with a project's own docs. Override to merge them elsewhere.
