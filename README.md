@@ -55,6 +55,22 @@ It also sets up two companion tools, best-effort (a failure never blocks the cor
 Skip both with `AUTOPILOT_SKIP_EXTRAS=1`. Env overrides: `AUTOPILOT_REPO` (git url),
 `AUTOPILOT_DIR` (clone target), `AUTOPILOT_PONYTAIL_REPO`, `CLAUDE_HOME`.
 
+### Windows
+
+autopilot is a bash tool; it runs on Windows through a bash environment, not PowerShell.
+
+- **WSL (recommended)** — install [WSL](https://learn.microsoft.com/windows/wsl/install),
+  then run the same curl install and `autopilot` commands inside it. Everything works
+  identically to Linux/macOS (symlinks, `curl`, `jq`, notifications via `notify-send`).
+- **Git Bash** (Git for Windows) — also works: `curl`, `date`, `sed`, `awk` are bundled.
+  Two caveats — enable symlinks (install Git with "symbolic links" checked, or set
+  `MSYS=winsymlinks:nativestrict`) so the installer links instead of copies; and desktop
+  popups use a Windows toast via `powershell.exe`. Telegram / webhook / ntfy notifications
+  work everywhere.
+
+The `claude` CLI itself must be installed and authenticated in the same environment you run
+autopilot from. `autopilot doctor` reports what it finds.
+
 ## Use
 
 ```bash

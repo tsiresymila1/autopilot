@@ -84,7 +84,8 @@ elif [ -n "${AUTOPILOT_TELEGRAM_TOKEN:-}" ]; then note "telegram token set but A
 [ -n "${AUTOPILOT_NOTIFY:-}" ]          && { pass "notifications via AUTOPILOT_NOTIFY hook"; nch=$((nch+1)); }
 if [ "$nch" -eq 0 ]; then
   if command -v osascript >/dev/null 2>&1; then pass "notifications via osascript (macOS, local only)"
-  elif command -v notify-send >/dev/null 2>&1; then pass "notifications via notify-send (local only)"
+  elif command -v notify-send >/dev/null 2>&1; then pass "notifications via notify-send (Linux/WSL, local only)"
+  elif command -v powershell.exe >/dev/null 2>&1; then pass "notifications via Windows toast (local only)"
   else note "no notifier — set AUTOPILOT_TELEGRAM_TOKEN + _CHAT_ID, AUTOPILOT_WEBHOOK_URL, or AUTOPILOT_NTFY_TOPIC"; fi
 fi
 say '·' "notify level: ${AUTOPILOT_NOTIFY_LEVEL:-steps} (milestones · steps · verbose)"

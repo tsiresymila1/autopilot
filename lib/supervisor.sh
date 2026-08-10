@@ -50,7 +50,10 @@ wait_for_reset() {
   hhmm=$(grep -oiE '(resets?|réinitialis[^ ]*|réessayez?)[^0-9]{0,20}([0-9]{1,2})[:h]([0-9]{2})' "$out" 2>/dev/null \
          | grep -oE '([0-9]{1,2})[:h]([0-9]{2})' | head -1 | tr 'h' ':')
   if [ -n "$hhmm" ]; then
-    now=$(date +%s); target=$(date -j -f "%H:%M" "$hhmm" +%s 2>/dev/null || echo "")
+    # Parse the reset time portably: BSD/macOS date (-j -f) or GNU/Linux date (-d).
+    now=$(date +%s)
+    target=$(date -j -f "%H:%M" "$hhmm" +%s 2>/dev/null \
+             || date -d "$hhmm" +%s 2>/dev/null || echo "")
     if [ -n "$target" ]; then
       [ "$target" -le "$now" ] && target=$((target + 86400))
       secs=$((target - now + 60))

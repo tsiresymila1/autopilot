@@ -147,11 +147,18 @@ _ap_ch_custom() {
 # verbose run does not buzz the laptop on every step.
 _ap_ch_local() {
   _ap_level_ge "${AUTOPILOT_LOCAL_LEVEL:-milestones}" "${AP_EVENT_LEVEL:-steps}" || return 0
-  if command -v osascript >/dev/null 2>&1; then
+  if command -v osascript >/dev/null 2>&1; then                       # macOS
     osascript -e 'on run {t,b}' -e 'display notification b with title t' -e 'end run' \
       "$1" "$2" >/dev/null 2>&1 && echo "notified via osascript"
-  elif command -v notify-send >/dev/null 2>&1; then
+  elif command -v notify-send >/dev/null 2>&1; then                   # Linux / WSL with a GUI
     notify-send "$1" "$2" >/dev/null 2>&1 && echo "notified via notify-send"
+  elif command -v powershell.exe >/dev/null 2>&1; then                # Windows (Git Bash / WSL)
+    powershell.exe -NoProfile -Command \
+      "[Windows.UI.Notifications.ToastNotificationManager,Windows.UI.Notifications,ContentType=WindowsRuntime]>\$null; \
+       \$t=[Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent(0); \
+       \$t.GetElementsByTagName('text')[0].AppendChild(\$t.CreateTextNode('$1'))>\$null; \
+       [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('autopilot').Show([Windows.UI.Notifications.ToastNotification]::new(\$t))" \
+      >/dev/null 2>&1 && echo "notified via windows toast"
   fi
 }
 
