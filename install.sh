@@ -6,12 +6,14 @@
 # Over the network:  curl -fsSL <raw-url>/install.sh | bash
 #                    (clones the repo to $AUTOPILOT_DIR, then links from there)
 #
-# Env overrides: AUTOPILOT_REPO (git url) · AUTOPILOT_DIR (clone target) · CLAUDE_HOME
+# Env overrides: AUTOPILOT_REPO (git url) · AUTOPILOT_DIR (clone target) ·
+#                CLAUDE_HOME · CODEX_HOME
 set -euo pipefail
 
 REPO_URL="${AUTOPILOT_REPO:-https://github.com/tsiresymila1/autopilot.git}"
 INSTALL_DIR="${AUTOPILOT_DIR:-$HOME/.local/share/autopilot}"
 CLAUDE="${CLAUDE_HOME:-$HOME/.claude}"
+CODEX="${CODEX_HOME:-$HOME/.codex}"
 
 # Source of truth: the local checkout if we are inside one, else clone/update it.
 # When piped through `bash`, BASH_SOURCE is not a real path, so skill/ won't be found.
@@ -40,6 +42,15 @@ ln -sfn "$HERE/bin/autopilot" "$HOME/.local/bin/autopilot"
 echo "linked:"
 echo "  skill → $CLAUDE/skills/autopilot"
 echo "  cli   → $HOME/.local/bin/autopilot"
+
+# Codex skills dir — same skill/, so `AUTOPILOT_ENGINE=codex` finds it there too.
+# Skip with AUTOPILOT_SKIP_CODEX=1. Same rm-first to avoid the ln-nesting trap.
+if [ -z "${AUTOPILOT_SKIP_CODEX:-}" ]; then
+  mkdir -p "$CODEX/skills"
+  [ -L "$CODEX/skills/autopilot" ] || rm -rf "$CODEX/skills/autopilot"
+  ln -sfn "$HERE/skill" "$CODEX/skills/autopilot"
+  echo "  skill → $CODEX/skills/autopilot (codex)"
+fi
 
 echo "agents:"
 for f in "$HERE"/agents/*.md; do

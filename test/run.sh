@@ -279,6 +279,8 @@ FAKE="$TMP/home"; mkdir -p "$FAKE/.claude/agents"
 echo "MY OWN builder" > "$FAKE/.claude/agents/builder.md"   # pre-existing user file
 out="$(HOME="$FAKE" AUTOPILOT_SKIP_EXTRAS=1 bash "$ROOT/install.sh" 2>&1)"
 [ -L "$FAKE/.claude/skills/autopilot" ] && ok "install links the skill" || no "skill not linked"
+{ [ -L "$FAKE/.codex/skills/autopilot" ] && [ "$(readlink "$FAKE/.codex/skills/autopilot")" = "$ROOT/skill" ]; } \
+  && ok "install links the skill into the codex skills dir too" || no "codex skill not linked"
 # a STALE dir target (old copied SKILL.md) must be replaced by the symlink, not nested into
 STALE="$TMP/stale"; mkdir -p "$STALE/.claude/skills/autopilot"; echo "OLD" > "$STALE/.claude/skills/autopilot/SKILL.md"
 HOME="$STALE" AUTOPILOT_SKIP_EXTRAS=1 bash "$ROOT/install.sh" >/dev/null 2>&1

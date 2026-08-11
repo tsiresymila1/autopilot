@@ -547,7 +547,13 @@ AUTOPILOT_ENGINE=codex autopilot run "<goal>"  # Codex
 | Engine | How the skill reaches it | Notes |
 |---|---|---|
 | `claude` (default) | the installed skill, invoked as `/autopilot <goal>` | spawns the bundled subagents (builder, reviewer, …) |
-| `codex` | `skill/SKILL.md` is inlined on stdin — Codex has no skill system | no subagents: it performs each role itself, in the same order |
+| `codex` | `skill/SKILL.md` inlined on stdin | no subagents: it performs each role itself, in the same order |
+
+`install.sh` links the skill into **both** `~/.claude/skills/autopilot` and
+`~/.codex/skills/autopilot` (override with `CODEX_HOME`, skip with `AUTOPILOT_SKIP_CODEX=1`).
+To run on Codex: install the `codex` CLI, then set `AUTOPILOT_ENGINE=codex` (globally in your
+shell profile, or per-repo in `.autopilot.env`). The bash CLI verbs are engine-agnostic — they
+hold identically on either engine.
 
 Claude knob: `AUTOPILOT_CLAUDE_MODEL` pins the model (e.g. `claude-opus-4-8`) so a run
 is reproducible and can dodge a flaky tier; unset uses the claude CLI's own default.
