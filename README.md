@@ -57,19 +57,35 @@ Skip both with `AUTOPILOT_SKIP_EXTRAS=1`. Env overrides: `AUTOPILOT_REPO` (git u
 
 ### Windows
 
-autopilot is a bash tool; it runs on Windows through a bash environment, not PowerShell.
+autopilot is a bash tool. On Windows it runs through a bash environment — **WSL**
+(recommended, identical to Linux) or **Git Bash**. Install autopilot there with the same
+curl one-liner:
 
-- **WSL (recommended)** — install [WSL](https://learn.microsoft.com/windows/wsl/install),
-  then run the same curl install and `autopilot` commands inside it. Everything works
-  identically to Linux/macOS (symlinks, `curl`, `jq`, notifications via `notify-send`).
-- **Git Bash** (Git for Windows) — also works: `curl`, `date`, `sed`, `awk` are bundled.
-  Two caveats — enable symlinks (install Git with "symbolic links" checked, or set
-  `MSYS=winsymlinks:nativestrict`) so the installer links instead of copies; and desktop
-  popups use a Windows toast via `powershell.exe`. Telegram / webhook / ntfy notifications
-  work everywhere.
+```bash
+# inside a WSL or Git Bash terminal
+curl -fsSL https://raw.githubusercontent.com/tsiresymila1/autopilot/main/install.sh | bash
+```
 
-The `claude` CLI itself must be installed and authenticated in the same environment you run
-autopilot from. `autopilot doctor` reports what it finds.
+Git Bash caveat: enable symlinks (install Git with "symbolic links" checked, or set
+`MSYS=winsymlinks:nativestrict`) so the installer links instead of copies.
+
+**Run it from cmd or PowerShell too.** A launcher forwards `autopilot ...` from cmd/PowerShell
+into your bash environment, preserving quoted goals:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File win\install.ps1   # adds a launcher to your PATH
+# then, in any cmd or PowerShell window:
+autopilot doctor
+autopilot supervise "add CSV export"
+```
+
+The launcher (`win\autopilot.cmd` + `win\autopilot.ps1`) auto-picks WSL, else Git Bash;
+force one with `AUTOPILOT_WIN_BASH=wsl|gitbash`. It only forwards — autopilot itself must be
+installed in that bash environment (above). Telegram / webhook / ntfy notifications work
+everywhere; desktop popups use a Windows toast via `powershell.exe`.
+
+The `claude` CLI must be installed and authenticated in the **bash** environment autopilot
+runs in (WSL or Git Bash), not in cmd. `autopilot doctor` reports what it finds.
 
 ## Use
 
