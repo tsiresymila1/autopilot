@@ -480,6 +480,53 @@ mkdir -p "$TMP/evt"; cd "$TMP/evt"; git init -q
   case "$out" in *"$TOK"*) no "SECURITY: token leaked on failure path";; *) ok "token never echoed on the failure path";; esac
 cd "$ROOT"
 
+# --- parallel: wave selection + fail-safe worktree merge ---------------------
+echo "fixture: parallel (wave + worktree merge)"
+mkdir -p "$TMP/par"; cd "$TMP/par"; git init -q
+  git config user.email t@t; git config user.name t
+  mkdir -p src/a src/b; echo x > src/a/f.ts; echo x > src/b/f.ts; echo base > README.md
+  git add -A && git commit -qm init >/dev/null
+  mkdir -p .autopilot/tasks .autopilot/state
+  printf '# 1 A\n- **id**: t-a\n- **gate**: `test -s src/a/f.ts`\n## Allowed Files\n- src/a\n' > .autopilot/tasks/001-a.md
+  printf '# 2 B\n- **id**: t-b\n- **gate**: `test -s src/b/f.ts`\n## Allowed Files\n- src/b\n' > .autopilot/tasks/002-b.md
+  printf '# 3 C\n- **id**: t-c\n- **gate**: `true`\n## Allowed Files\n- src/a/f.ts\n' > .autopilot/tasks/003-c.md   # overlaps A
+  printf '# 4 D\n- **id**: t-d\n- **gate**: `true`\n- **depends**: t-a\n## Allowed Files\n- README.md\n' > .autopilot/tasks/004-d.md
+  # deps extraction
+  assert_contains "$("$AP" deps .autopilot/tasks/004-d.md)" "t-a" "deps extracts the dependency id"
+  # wave: picks the two disjoint ready tasks, excludes the overlap and the unmet-dep task
+  w="$("$AP" wave --width 3)"
+  assert_contains "$w" "001-a" "wave includes an independent task"
+  assert_contains "$w" "002-b" "wave includes a second disjoint task"
+  case "$w" in *003-c*) no "wave wrongly included a file-overlapping task";; *) ok "wave excludes a file-overlapping task";; esac
+  case "$w" in *004-d*) no "wave wrongly included a task with an unmet dependency";; *) ok "wave excludes a task whose dep isn't done";; esac
+  # --width caps the wave
+  [ "$("$AP" wave --width 1 | grep -c .)" -eq 1 ] && ok "wave respects --width" || no "--width not honored"
+  "$AP" wave --width abc >/dev/null 2>&1; [ "$?" -ne 0 ] && ok "wave rejects a non-integer width" || no "bad width accepted"
+  # wt add → build in-scope → merge cherry-picks onto main
+  wt="$("$AP" wt add .autopilot/tasks/001-a.md)"
+  [ -d "$wt" ] && ok "wt add creates the worktree" || no "worktree not created"
+  ( cd "$wt" && echo built >> src/a/f.ts && git add -A && git commit -qm "t-a build" >/dev/null )
+  AUTOPILOT_NTFY_TOPIC="" "$AP" wt merge .autopilot/tasks/001-a.md >/dev/null 2>&1
+  grep -q built src/a/f.ts && ok "wt merge cherry-picks an in-scope change onto main" || no "in-scope change not merged"
+  [ "$(cat .autopilot/state/t-a)" = done ] && ok "wt merge marks the task done" || no "state not done"
+  [ -d "$wt" ] && no "worktree not cleaned after merge" || ok "wt merge removes the worktree"
+  # THE safety assertion: an out-of-scope worktree commit is REFUSED, main untouched
+  wt2="$("$AP" wt add .autopilot/tasks/002-b.md)"
+  ( cd "$wt2" && echo HACK >> README.md && git add -A && git commit -qm "t-b out of scope" >/dev/null )
+  before="$(git rev-parse HEAD)"
+  AUTOPILOT_NTFY_TOPIC="" "$AP" wt merge .autopilot/tasks/002-b.md >/dev/null 2>&1; code=$?
+  [ "$code" -ne 0 ] && ok "wt merge refuses an out-of-scope worktree (non-zero)" || no "out-of-scope merge not refused"
+  [ "$before" = "$(git rev-parse HEAD)" ] && ok "refused merge leaves the main branch untouched" || no "main branch was modified by a refused merge"
+  grep -q HACK README.md && no "out-of-scope change leaked onto main" || ok "out-of-scope change never reaches main"
+  [ "$(cat .autopilot/state/t-b)" = blocked ] && ok "a refused task is marked blocked" || no "refused task not blocked"
+  "$AP" wt drop .autopilot/tasks/002-b.md >/dev/null 2>&1
+  case "$("$AP" wt list 2>&1)" in *t-b*) no "wt drop left the worktree";; *) ok "wt drop removes the worktree";; esac
+  # --parallel is validated and stripped from the engine prompt
+  out="$("$AP" run "x" --parallel 3 --print-prompt 2>&1 | grep '/autopilot')"
+  assert_contains "$out" "--parallel 3" "--parallel is forwarded to the skill"
+  "$AP" run "x" --parallel abc >/dev/null 2>&1; [ "$?" -ne 0 ] && ok "--parallel rejects a non-integer" || no "bad --parallel accepted"
+cd "$ROOT"
+
 echo
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ]

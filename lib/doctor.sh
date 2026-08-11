@@ -66,6 +66,8 @@ if command -v specify >/dev/null 2>&1 || ls "$root/.specify" "$HOME/.claude"/com
 else
   note "spec-kit not found — 'uv tool install specify-cli --from git+https://github.com/github/spec-kit.git', or the skill falls back to plain decomposition"
 fi
+if git worktree list >/dev/null 2>&1; then say '·' "git worktree ok — '--parallel N' can isolate concurrent tasks (needs file-disjoint tasks)"
+else note "git too old for worktrees — '--parallel' unavailable (upgrade git ≥ 2.5)"; fi
 if claude plugin list 2>/dev/null | grep -qi ponytail; then pass "ponytail plugin installed"
 else note "ponytail not installed — install.sh sets it up (best-effort)"; fi
 if why="$(ap_engine_available)"; then pass "engine: $(ap_engine) (ready)"

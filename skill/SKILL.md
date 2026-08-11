@@ -111,6 +111,10 @@ Three mandatory guards, each covering a different failure:
 Allowed Files replaces "don't touch file X" prose: instead of listing what's forbidden
 (unbounded), list what's permitted (bounded) — and enforce it objectively.
 
+`- **depends**: id1, id2` is **machine-read** (`autopilot deps`, `autopilot wave`): a task
+is only eligible — sequentially or in a parallel wave — once every id it lists is `done`.
+Keep it accurate: it is what lets independent tasks run concurrently under `--parallel`.
+
 ## Phase 0 — Preflight, then open the workspace
 
 Run the doctor first — it tells you the **project status** so you adapt instead of
@@ -275,6 +279,28 @@ skip them the run still reports every step; if you make them the operator sees y
 live. Never put a secret in an event body — it reaches the webhook.
 
 For each task in dependency order (skip those whose `depends` is not `done`):
+
+### Parallel execution (only when the goal carries `--parallel N`)
+
+Default is sequential. **Only if the goal says `--parallel N`**, run independent tasks
+concurrently — the CLI does the dangerous parts safely, you only schedule:
+
+1. `autopilot wave --width N` → the task files that may run together (not done, deps done,
+   pairwise file-disjoint). **Empty output → fall back to the normal sequential loop** for
+   the next task.
+2. For each task in the wave: `wt="$(autopilot wt add <task>)"` creates an isolated git
+   worktree. Dispatch one `builder` per task **in a single message** (so they run at once),
+   each told: work in the absolute path `$wt`, touch only the task's Allowed Files, make the
+   gate pass, and **commit in that worktree**.
+3. When every builder returns, for each task **serially**: `autopilot wt merge <task>`. It
+   scope-checks the worktree's commits and cherry-picks them onto the base — and **refuses**
+   (marks `blocked`) anything outside `## Allowed Files` or that conflicts. A builder that
+   produced nothing or failed → `autopilot wt drop <task>`, then `report`/`inbox` it as
+   blocked/needs-human.
+4. Repeat waves until only sequential/blocked tasks remain, then continue the normal loop.
+
+The CLI is the safety floor: `wt merge` can never corrupt the base, whatever you schedule.
+Keep `N` small — each concurrent builder is a full build (N× memory, N× tokens; risk of OOM).
 
 **Base must be green.** Before the first task, and after every commit, the repo gate
 (`autopilot gate <task> --repo`) must pass. Never build on a red base — you would not know

@@ -105,6 +105,8 @@ autopilot scope <task.md> [ref]     # changed files outside the task's ## Allowe
 autopilot revert <task.md>          # restore only the task's Allowed Files (scoped)
 autopilot review <task.md> [ref]    # independent JSON verdict from another model
 autopilot event <kind> <title> ..   # push a per-step notification (Telegram/webhook/ntfy)
+autopilot wave [--width N]          # task files that can run concurrently (disjoint, deps done)
+autopilot wt add|merge|drop <t.md>  # parallel worktree mechanics (merge is fail-safe)
 autopilot docs [status|init]        # the durable-doc quad (committed source of truth)
 autopilot logs [what] [-f] [-n N]   # session (default) | supervisor | gate-<id> | journal | ls
 autopilot notify "<title>" "<msg>"  # fire a milestone notification (test the hook)
@@ -393,6 +395,35 @@ State lives in `.autopilot/` (git-ignored, local to the worktree):
 `autopilot status --json` aggregates `state/*` on demand — there is no second copy
 of the state to keep in sync. The **committed** durable docs live separately, under
 `docs/autopilot/`.
+
+## Parallel execution — opt-in, isolated in git worktrees
+
+By default tasks run one at a time. For a queue of many **independent, file-disjoint** tasks
+(e.g. "migrate 13 isolated domains"), add `--parallel N` to run up to N at once:
+
+```bash
+autopilot supervise "<goal>" --parallel 3
+```
+
+Each concurrent task runs in its **own git worktree** on a branch `ap/<id>`, so builds, gates,
+and commits can't collide. Merging back is the only serial step — and it is **fail-safe**:
+
+```
+autopilot wave --width N     # tasks eligible to run together: not done, deps done, file-disjoint
+autopilot wt add <task>      # isolate a task in a fresh worktree
+# … build + gate + commit inside the worktree …
+autopilot wt merge <task>    # scope-check, then cherry-pick onto the base branch
+```
+
+`wt merge` **refuses** any worktree whose commits stray outside the task's `## Allowed Files`
+or would conflict — it marks the task `blocked` and leaves the base branch untouched. So a
+mis-scheduled parallel run can never corrupt your branch; the CLI is the safety floor and the
+engine only schedules. `depends` (`- **depends**: id`) is honored — a task joins a wave only
+once its dependencies are `done`.
+
+**Cost.** N concurrent builds = N× memory (real OOM risk — a single build already OOM'd on a
+big repo) and N× engine tokens. Keep N small. Without `--parallel`, nothing changes — fully
+sequential, as before. `autopilot doctor` reports whether git worktrees are usable.
 
 ## Scope control — the whitelist is enforced, not suggested
 

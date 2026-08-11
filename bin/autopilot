@@ -16,6 +16,9 @@
 #   autopilot revert <task.md>         restore only the task's Allowed Files (scoped)
 #   autopilot review <task.md> [ref]   independent JSON verdict (AUTOPILOT_REVIEWER)
 #   autopilot event <kind> <title> [body] [--task f] [--state s] [--level l]  per-step notification
+#   autopilot wave [--width N]         task files that can run concurrently (disjoint, deps done)
+#   autopilot wt add|merge|drop <task.md> | list   parallel worktree mechanics (fail-safe merge)
+#   autopilot deps <task.md>           the ids a task depends on
 #   autopilot init                     scaffold editable project instructions (CLAUDE.md + quad + config)
 #   autopilot docs [status|init]       the durable-doc quad (committed source of truth)
 #   autopilot logs [what] [-f] [-n N]  tail a log: session (default) | supervisor | gate | journal | ls
@@ -45,7 +48,7 @@ LIB="$HERE/lib"
 _ap_conf="$(ap_root 2>/dev/null)/.autopilot.env"
 [ -f "$_ap_conf" ] && { set -a; . "$_ap_conf"; set +a; }
 
-usage() { sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'; }
 
 cmd="${1:-help}"; shift 2>/dev/null || true
 
@@ -63,6 +66,10 @@ case "$cmd" in
         --yes)          yes="--yes"; fargs+=("$1") ;;
         --print-prompt) dry=1 ;;
         --lang)         export AUTOPILOT_LANG="${2:?--lang needs a value (e.g. fr)}"; shift ;;
+        --parallel)     par="${2:?--parallel needs a number}"; shift
+                        case "$par" in ''|*[!0-9]*) ap_die "--parallel must be a positive integer" 2 ;; esac
+                        [ "$par" -ge 1 ] || ap_die "--parallel must be >= 1" 2
+                        fargs+=("--parallel" "$par") ;;   # advisory to the skill
         *)              fargs+=("$1") ;;
       esac
       shift
@@ -323,6 +330,41 @@ EOF
     done
     ap_event "$e_kind" "$e_title" "$e_body" "$e_task" "$e_state" "$e_level"
     echo "event $e_kind logged" ;;
+
+  deps)
+    # autopilot deps <task.md>  — the ids this task depends on (from `- **depends**:`).
+    task="${1:?usage: autopilot deps <task.md>}"; [ -f "$task" ] || ap_die "no such task file: $task"
+    ap_deps_of "$task" ;;
+
+  wave)
+    # autopilot wave [--width N]  — up to N task files that can run concurrently:
+    # not done, deps satisfied, gate + Allowed Files present, pairwise file-disjoint.
+    width=2
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --width) width="${2:?--width needs a number}"; shift 2 ;;
+        *) ap_die "wave: unknown option '$1'" 2 ;;
+      esac
+    done
+    case "$width" in ''|*[!0-9]*) ap_die "wave: --width must be a positive integer" 2 ;; esac
+    [ "$width" -ge 1 ] || ap_die "wave: --width must be >= 1" 2
+    ap_wave "$width" ;;
+
+  wt)
+    # autopilot wt add|merge|drop <task.md> | list  — parallel worktree mechanics.
+    # add:   create an isolated worktree on branch ap/<id> off HEAD (prints its path)
+    # merge: scope-check the worktree's commits and cherry-pick onto the main branch;
+    #        REFUSES anything out of ## Allowed Files or that conflicts (fail-safe)
+    # drop:  remove the worktree + branch (cleanup / on builder failure)
+    # list:  autopilot worktrees currently on disk
+    sub="${1:?usage: autopilot wt add|merge|drop <task.md> | list}"; shift || true
+    case "$sub" in
+      list) ap_wt_list ;;
+      add|merge|drop)
+        task="${1:?usage: autopilot wt $sub <task.md>}"; [ -f "$task" ] || ap_die "no such task file: $task"
+        ap_wt_"$sub" "$task"; exit $? ;;
+      *) ap_die "wt: unknown subcommand '$sub' (add|merge|drop|list)" 2 ;;
+    esac ;;
 
   docs)
     # autopilot docs [status|init]  — the durable-doc quad (committed source of truth).
